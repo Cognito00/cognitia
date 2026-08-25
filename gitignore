@@ -1,0 +1,87 @@
+# ============================
+# Environment / Secrets
+# ============================
+.env
+*.env
+!.env.example
+
+# ============================
+# Frontend (Node/React)
+# ============================
+frontend/node_modules/
+frontend/build/
+frontend/dist/
+frontend/.cache/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ============================
+# Backend (Python)
+# ============================
+backend/__pycache__/
+backend/**/__pycache__/
+backend/*.pyc
+backend/venv/
+backend/.venv/
+backend/env/
+
+# ============================
+# ML (Python + Datasets + Weights)
+# ============================
+ml/__pycache__/
+ml/**/__pycache__/
+ml/venv/
+ml/.venv/
+
+# Dataset (never commit raw/processed data)
+ml/dataset/raw/*
+ml/dataset/processed/*
+ml/dataset/annotations/*
+!ml/dataset/raw/.gitkeep
+!ml/dataset/processed/.gitkeep
+!ml/dataset/annotations/.gitkeep
+
+# Trained model weights (large binaries)
+ml/models_weights/*
+!ml/models_weights/.gitkeep
+!ml/models_weights/README.md
+*.pt
+*.pth
+*.h5
+*.onnx
+*.pkl
+
+# Jupyter checkpoints
+ml/notebooks/.ipynb_checkpoints/
+
+# ============================
+# Runtime storage (uploads, annotated images, reports)
+# ============================
+storage/uploads/*
+storage/annotated/*
+storage/reports/*
+!storage/uploads/.gitkeep
+!storage/annotated/.gitkeep
+!storage/reports/.gitkeep
+
+# ============================
+# Database
+# ============================
+*.sqlite3
+*.db
+
+# ============================
+# General / OS / Editor
+# ============================
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/
+*.swp
+
+# ============================
+# Docker (optional, if used later)
+# ============================
+docker-compose.override.yml
