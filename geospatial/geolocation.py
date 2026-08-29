@@ -1,13 +1,8 @@
-def map_detection_to_location(metadata):
-    """
-    Convert sonar metadata into GPS coordinates.
-    """
-
-    latitude = metadata.get("latitude")
-    longitude = metadata.get("longitude")
-
+def map_detection_to_location(detection, metadata_row):
     return {
-        "latitude": latitude,
-        "longitude": longitude,
-        "gps_confidence": 0.95
+        "class": detection["class"],
+        "confidence": detection["confidence"],
+        "latitude": metadata_row["latitude"],
+        "longitude": metadata_row["longitude"],
+        "depth_m": metadata_row["depth_m"]
     }
