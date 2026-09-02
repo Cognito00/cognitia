@@ -1,7 +1,7 @@
 model:
   path: "../models/best.pt"
-  version: "sonar-yolo11n-mvp-01"
-  confidence_threshold: 0.25
+  version: "MVP-04-V5-Rec14"
+  confidence_threshold: 0.15
 
 classes:
   0: Shipwreck
@@ -11,4 +11,4 @@ classes:
 inference:
   image_size: 960
   bbox_format: pixel_xyxy
-  confidence_format: percentage
+  confidence_format: decimal
