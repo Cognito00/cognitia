@@ -82,7 +82,7 @@ export const HistoryPage: React.FC = () => {
           <div className="space-y-1">
             <h2 className="text-2xl font-display font-bold text-white tracking-wide">NO SCAN HISTORY</h2>
             <p className="text-xs text-slate-400 font-sans max-w-sm mx-auto">
-              No sonar missions have been processed yet. Upload a .SON file to initialize your first survey mission.
+              No sonar missions have been processed yet. Upload a .zip file to initialize your first survey mission.
             </p>
           </div>
 

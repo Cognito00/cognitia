@@ -98,7 +98,7 @@ export const ProcessingPage: React.FC = () => {
             <span>EXECUTING SONAR AI PIPELINE</span>
           </h1>
           <p className="text-xs text-slate-400 font-sans mt-1">
-            Analyzing Side-Scan Sonar dataset: <span className="font-mono text-[#38BDF8] font-bold">{activeMission?.fileName || 'SONAR_DATA.SON'}</span>
+            Analyzing Side-Scan Sonar dataset: <span className="font-mono text-[#38BDF8] font-bold">{activeMission?.fileName || 'SONAR_DATA.ZIP'}</span>
           </p>
         </div>
 
@@ -170,7 +170,7 @@ export const ProcessingPage: React.FC = () => {
             </div>
 
             <p className="text-base font-serif text-slate-200 z-10 font-bold">
-              Processing Side-Scan Sonar Acoustic Swaths (.SON Format)...
+              Processing Side-Scan Sonar Acoustic Swaths (.ZIP Format)...
             </p>
 
             <div className="text-xs font-mono text-slate-400 z-10 flex items-center gap-2 bg-[#050E1E] px-4 py-1.5 rounded-full border border-slate-800">

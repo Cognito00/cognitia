@@ -48,7 +48,7 @@ export const DashboardPage: React.FC = () => {
             className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#38BDF8] hover:bg-[#0EA5E9] text-[#030712] font-bold rounded-xl transition-all shadow-cyan-glow cursor-pointer"
           >
             <PlusCircle className="w-4 h-4" />
-            <span>Upload .SON</span>
+            <span>Upload .ZIP</span>
           </button>
         </div>
       </div>
@@ -63,7 +63,7 @@ export const DashboardPage: React.FC = () => {
           <div className="space-y-1">
             <h2 className="text-xl font-serif font-bold text-white tracking-wide">NO ACTIVE MISSION</h2>
             <p className="text-xs text-slate-400 font-sans max-w-md mx-auto">
-              Upload a Side-Scan Sonar .SON file to begin a SAGARA analysis mission.
+              Upload a sonar data .zip file to begin a SAGARA analysis mission.
             </p>
           </div>
           <div className="pt-2">
@@ -72,7 +72,7 @@ export const DashboardPage: React.FC = () => {
               className="px-6 py-3 rounded-xl bg-[#38BDF8] hover:bg-[#0EA5E9] text-[#030712] font-bold transition-all shadow-cyan-glow inline-flex items-center gap-2 cursor-pointer"
             >
               <Upload className="w-4 h-4" />
-              <span>Upload .SON</span>
+              <span>Upload .ZIP</span>
             </button>
           </div>
         </div>

@@ -4,7 +4,7 @@ export const MOCK_PROCESSING_STAGES: ProcessingStage[] = [
   {
     id: 'upload',
     name: 'File Validation',
-    description: '.SON header structure & binary checksum verification...',
+    description: '.ZIP archive structure & binary checksum verification...',
     status: 'pending',
     progress: 0
   },

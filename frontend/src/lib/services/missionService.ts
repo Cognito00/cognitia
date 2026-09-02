@@ -21,7 +21,7 @@ export const missionService = {
   },
 
   /**
-   * Create & initialize a new survey mission from a .SON file upload.
+   * Create & initialize a new survey mission from a .ZIP file upload.
    * // API: POST /api/v1/missions (multipart/form-data)
    */
   async createMission(file: File, metadata: Partial<Mission>): Promise<Mission> {
@@ -32,7 +32,7 @@ export const missionService = {
       lng: 74.1240,
       dateTime: metadata.surveyDate || new Date().toISOString(),
       depthMeters: metadata.depth || 25.0,
-      notes: metadata.notes || 'Automated .SON survey ingestion',
+      notes: metadata.notes || 'Automated .ZIP survey ingestion',
       vesselName: metadata.vessel || 'INS Sagar Kanya (MoES-04)',
       sonarFrequency: metadata.sonarFrequency || '800 kHz High Precision',
       swathWidthMeters: metadata.swathWidth || 100,

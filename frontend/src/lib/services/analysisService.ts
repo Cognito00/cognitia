@@ -66,7 +66,7 @@ export const analysisService = {
   },
 
   /**
-   * Submits raw Side-Scan Sonar .SON file and survey metadata for AI processing.
+   * Submits raw Side-Scan Sonar .ZIP archive and survey metadata for AI processing.
    */
   async submitSonAnalysis(file: File, metadata: Partial<SurveyMetadata>): Promise<Analysis> {
     await new Promise((resolve) => setTimeout(resolve, 300));
@@ -96,7 +96,7 @@ export const analysisService = {
         vesselName: metadata.vesselName || 'INS Sagar Kanya (MoES-04)',
         sonarFrequency: metadata.sonarFrequency || '800 kHz High Precision',
         swathWidthMeters: metadata.swathWidthMeters || 100,
-        notes: metadata.notes || 'Ingested via .SON file upload pipeline.'
+        notes: metadata.notes || 'Ingested via .ZIP file upload pipeline.'
       },
       detections: [
         {

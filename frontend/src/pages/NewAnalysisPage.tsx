@@ -1,51 +1,43 @@
 import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { sonarService } from '../lib/services/sonarService';
 import { useMissionContext } from '../context/MissionContext';
+import { sonarService } from '../lib/services/sonarService';
 import { ProcessingStage } from '../lib/types/analysis';
 import { MOCK_PROCESSING_STAGES } from '../lib/mock/mockProcessingStates';
 import { 
   Upload, 
+  FileCode, 
+  Check, 
+  ShieldCheck, 
   AlertCircle, 
-  X, 
-  MapPin, 
-  Calendar, 
-  CheckCircle2, 
-  XCircle, 
-  Loader2, 
   ArrowRight, 
-  RotateCcw,
-  Sliders,
-  Radio,
-  FileCode,
-  Waves,
-  ShieldCheck,
-  Check,
-  Bell,
   FolderOpen,
-  Droplets,
-  Edit3
+  Loader2,
+  Sliders,
+  Bell,
+  CheckCircle2,
+  XCircle,
+  RotateCcw,
+  X
 } from 'lucide-react';
 
 export const NewAnalysisPage: React.FC = () => {
   const navigate = useNavigate();
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const { setActiveMission, refreshMissions } = useMissionContext();
+  const { setActiveMission } = useMissionContext();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [currentStep, setCurrentStep] = useState<'UPLOAD' | 'PROCESSING'>('UPLOAD');
+  // Form Parameters
+  const [locationName, setLocationName] = useState<string>('Goa Coastal Shelf Sector 2');
+  const [depthMeters, setDepthMeters] = useState<number>(25);
+  const [frequency, setFrequency] = useState<string>('800 kHz High Precision');
+  const [swathWidth, setSwathWidth] = useState<number>(100);
+  const [dateTime, setDateTime] = useState<string>(new Date().toISOString().slice(0, 16));
+  const [notes, setNotes] = useState<string>('Priority marine anomaly survey run.');
 
-  // Upload File State
+  // File Upload State
   const [file, setFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
-
-  // Mission Parameters State (Matching Reference Screenshot)
-  const [locationName, setLocationName] = useState<string>('Goa Coastal Shelf Benthic Zone B2');
-  const [dateTime, setDateTime] = useState<string>('30 Aug 2026, 02:50 PM');
-  const [depthMeters, setDepthMeters] = useState<number>(25);
-  const [waterConditions, setWaterConditions] = useState<string>('Clear weather, low current, good visibility');
-  const [frequency, setFrequency] = useState<string>('800 kHz (High Precision)');
-  const [notes, setNotes] = useState<string>('Clear weather, low current, good visibility.');
 
   // Processing Pipeline State
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
@@ -55,14 +47,14 @@ export const NewAnalysisPage: React.FC = () => {
   const [failedStageName, setFailedStageName] = useState<string>('');
   const [simulateFailureToggle, setSimulateFailureToggle] = useState<boolean>(false);
 
-  // Strict .SON File Extension & Size Validation
+  // Strict .ZIP File Extension & Size Validation
   const validateAndSetFile = (selectedFile: File) => {
     setFileError(null);
     const ext = selectedFile.name.split('.').pop()?.toLowerCase() || '';
 
-    // Validate strict .SON file format
-    if (ext !== 'son') {
-      setFileError('Unsupported file format. Please upload a Side-Scan Sonar .SON file.');
+    // Validate strict .ZIP file format
+    if (ext !== 'zip') {
+      setFileError('Invalid file format. Please upload a .zip file.');
       setFile(null);
       return;
     }
@@ -70,7 +62,7 @@ export const NewAnalysisPage: React.FC = () => {
     // Validate 500 MB max size limit
     const MAX_SIZE_BYTES = 500 * 1024 * 1024; // 500 MB
     if (selectedFile.size > MAX_SIZE_BYTES) {
-      setFileError('File exceeds the maximum supported size (500 MB). Please select a smaller .SON dataset.');
+      setFileError('File exceeds the maximum supported size (500 MB). Please select a smaller .zip archive.');
       setFile(null);
       return;
     }
@@ -98,7 +90,7 @@ export const NewAnalysisPage: React.FC = () => {
 
   const startPipeline = async () => {
     if (!file) {
-      setFileError('Please upload a valid Side-Scan Sonar .SON file before starting analysis.');
+      setFileError('Please upload a valid .zip file before starting analysis.');
       return;
     }
 
@@ -121,65 +113,50 @@ export const NewAnalysisPage: React.FC = () => {
     setProcessingFailed(false);
     setOverallProgress(0);
 
-    const stages: ProcessingStage[] = MOCK_PROCESSING_STAGES.map((s) => ({
-      ...s,
-      status: 'pending' as ProcessingStage['status'],
-      progress: 0
-    }));
+    const stages: ProcessingStage[] = MOCK_PROCESSING_STAGES.map((s) => ({ ...s, status: 'pending' }));
     setProcessingStages(stages);
 
-    const runStage = (index: number) => {
-      if (index >= stages.length) {
-        finishPipeline(missionId);
-        return;
-      }
-
-      if (simulateFailureToggle && index === 3) {
+    for (let i = 0; i < stages.length; i++) {
+      // Simulate signal failure toggle on stage 3 (AI Feature Extraction)
+      if (simulateFailureToggle && i === 3) {
+        stages[i].status = 'failed';
+        setProcessingStages([...stages]);
         setProcessingFailed(true);
-        setFailedStageName(stages[index].name);
-        stages[index].status = 'failed';
-        setProcessingStages([...stages]);
-        setIsProcessing(false);
+        setFailedStageName(stages[i].name);
         return;
       }
 
-      stages[index].status = 'in_progress';
+      stages[i].status = 'in_progress';
       setProcessingStages([...stages]);
+      setOverallProgress(Math.round(((i + 0.5) / stages.length) * 100));
 
-      setTimeout(() => {
-        stages[index].status = 'completed';
-        setProcessingStages([...stages]);
+      await new Promise((resolve) => setTimeout(resolve, 800));
 
-        const nextProgress = Math.round(((index + 1) / stages.length) * 100);
-        setOverallProgress(nextProgress);
+      stages[i].status = 'completed';
+      setProcessingStages([...stages]);
+      setOverallProgress(Math.round(((i + 1) / stages.length) * 100));
+    }
 
-        runStage(index + 1);
-      }, 500);
-    };
-
-    runStage(0);
-  };
-
-  const finishPipeline = async (missionId: string) => {
-    setIsProcessing(false);
-    await refreshMissions();
-    navigate(`/analysis?id=${missionId}`);
+    // Simulation Complete -> Navigate to Analysis Workspace
+    setTimeout(() => {
+      navigate(`/analysis?id=${missionId}`);
+    }, 600);
   };
 
   return (
     <div className="p-8 max-w-[1600px] mx-auto space-y-6 font-sans animate-fade-up select-none">
-      {/* STEP 1: UPLOAD SONAR SCAN WORKSTATION */}
-      {currentStep === 'UPLOAD' && (
+      {!isProcessing ? (
+        /* MAIN UPLOAD VIEW */
         <div className="space-y-6">
-          {/* Header Bar matching Reference Screenshot */}
+          {/* Header Bar */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800/80 pb-5">
             <div>
               <h1 className="text-3xl font-serif font-bold text-white flex items-center gap-3">
                 <span className="w-1.5 h-6 bg-[#38BDF8] rounded-full" />
-                <span>UPLOAD SONAR SCAN</span>
+                <span>Upload Sonar Scan</span>
               </h1>
               <p className="text-xs text-slate-400 font-sans mt-1">
-                Submit your side-scan sonar .SON data file for AI analysis
+                Submit your sonar data .zip archive for AI analysis
               </p>
             </div>
 
@@ -213,11 +190,11 @@ export const NewAnalysisPage: React.FC = () => {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
             {/* Center Main Sonar Upload Workstation Panel (Left 7 Cols) */}
             <div className="lg:col-span-7 bg-[#0B132B]/40 backdrop-blur-md border border-slate-800/80 rounded-2xl p-8 flex flex-col justify-between relative overflow-hidden min-h-[520px] premium-hover-card">
-              {/* Hidden Native File Input (.SON format only) */}
+              {/* Hidden Native File Input (.ZIP format only) */}
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".son,.SON"
+                accept=".zip,.ZIP,application/zip,application/x-zip-compressed"
                 className="hidden"
                 onChange={(e) => e.target.files?.[0] && validateAndSetFile(e.target.files[0])}
               />
@@ -253,7 +230,7 @@ export const NewAnalysisPage: React.FC = () => {
                     {/* Main Upload Instructions */}
                     <div className="space-y-2">
                       <h2 className="text-xl font-serif font-bold text-white tracking-wide">
-                        Drag & Drop your sonar data here
+                        Drag & Drop your sonar data archive here
                       </h2>
                       <p className="text-xs text-[#38BDF8] font-mono">
                         or browse files
@@ -262,10 +239,10 @@ export const NewAnalysisPage: React.FC = () => {
                       {/* Format Callout Pills */}
                       <div className="flex items-center justify-center gap-2 pt-2">
                         <span className="px-3 py-1 rounded-md bg-[#050E1E] border border-[#38BDF8]/40 text-[#38BDF8] font-mono text-xs font-bold shadow-cyan-sm">
-                          .SON
+                          .ZIP
                         </span>
                         <span className="text-[11px] text-slate-500 font-mono">
-                          (Side-Scan Sonar Data)
+                          (Sonar Data Archive)
                         </span>
                       </div>
                     </div>
@@ -282,7 +259,7 @@ export const NewAnalysisPage: React.FC = () => {
                     </div>
                   </div>
                 ) : (
-                  /* Selected .SON File State */
+                  /* Selected .ZIP File State */
                   <div className="flex flex-col items-center space-y-4 font-mono z-10 text-center">
                     <div className="w-24 h-24 rounded-full bg-[#030712] border-2 border-emerald-500 flex items-center justify-center text-emerald-400 shadow-xl">
                       <FileCode className="w-10 h-10" />
@@ -291,11 +268,11 @@ export const NewAnalysisPage: React.FC = () => {
                     <div className="space-y-1">
                       <span className="text-xs text-emerald-400 font-bold bg-emerald-950/80 px-3 py-1 rounded-full border border-emerald-500/40 inline-flex items-center gap-1.5">
                         <Check className="w-3.5 h-3.5" />
-                        <span>✓ SONAR DATA READY (.SON FORMAT)</span>
+                        <span>✓ SONAR DATA READY (.ZIP ARCHIVE)</span>
                       </span>
                       <h3 className="text-lg font-bold text-white pt-2">{file.name}</h3>
                       <p className="text-xs text-slate-400">
-                        Side-Scan Sonar Data • {(file.size / (1024 * 1024)).toFixed(2)} MB
+                        Sonar Data Archive • {(file.size / (1024 * 1024)).toFixed(2)} MB
                       </p>
                     </div>
 
@@ -303,7 +280,7 @@ export const NewAnalysisPage: React.FC = () => {
                       onClick={(e) => { e.stopPropagation(); setFile(null); setFileError(null); }}
                       className="px-4 py-1.5 rounded-lg bg-[#050E1E] text-red-400 hover:text-white border border-red-800/60 text-xs font-mono transition-colors cursor-pointer pointer-events-auto"
                     >
-                      Replace .SON File
+                      Replace .ZIP File
                     </button>
                   </div>
                 )}
@@ -319,161 +296,122 @@ export const NewAnalysisPage: React.FC = () => {
               {fileError && (
                 <div className="mt-4 p-3 bg-red-950/80 border border-red-800/80 rounded-lg text-xs text-red-300 font-mono w-full flex items-center justify-between gap-2 shadow-lg">
                   <div className="flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                    <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
                     <span>{fileError}</span>
                   </div>
                   <button onClick={() => setFileError(null)} className="text-slate-400 hover:text-white">
-                    <X className="w-3.5 h-3.5" />
+                    <X className="w-4 h-4" />
                   </button>
                 </div>
               )}
+
+              {/* Primary Action Button */}
+              <div className="mt-6 flex items-center gap-4">
+                <button
+                  onClick={startPipeline}
+                  disabled={!file}
+                  className={`flex-1 py-3.5 rounded-xl font-mono text-xs font-bold transition-all shadow-cyan-glow flex items-center justify-center gap-2 cursor-pointer ${
+                    file
+                      ? 'bg-[#38BDF8] hover:bg-[#0EA5E9] text-[#030712]'
+                      : 'bg-slate-900 text-slate-600 border border-slate-800 cursor-not-allowed'
+                  }`}
+                >
+                  <span>Begin Ocean Analysis</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
-            {/* Right Panel: MISSION PARAMETERS */}
-            <div className="lg:col-span-5 bg-[#0B132B]/40 backdrop-blur-md border border-slate-800/80 rounded-2xl p-6 space-y-5 font-mono text-xs flex flex-col justify-between premium-hover-card">
+            {/* Survey Metadata & Mission Parameters Configuration Panel (Right 5 Cols) */}
+            <div className="lg:col-span-5 bg-[#0B132B]/60 backdrop-blur-md border border-slate-800/80 rounded-2xl p-6 space-y-5 font-mono text-xs flex flex-col justify-between premium-hover-card">
               <div className="space-y-4">
-                {/* Panel Title */}
-                <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-                  <h3 className="text-sm font-serif font-bold text-[#38BDF8] flex items-center gap-2 tracking-wider uppercase">
-                    <Sliders className="w-4 h-4 text-[#38BDF8]" />
-                    <span>MISSION PARAMETERS</span>
+                <div className="border-b border-slate-800 pb-3 flex items-center justify-between">
+                  <h3 className="text-sm font-serif font-bold text-white tracking-wide">
+                    SURVEY METADATA PARAMETERS
                   </h3>
+                  <span className="text-[10px] text-[#38BDF8] bg-[#38BDF8]/10 px-2 py-0.5 rounded border border-[#38BDF8]/30 font-bold">
+                    CONFIG
+                  </span>
                 </div>
 
-                {/* 1. Location */}
-                <div className="space-y-1.5">
-                  <label className="block text-slate-400 text-[11px] flex items-center gap-1.5">
-                    <MapPin className="w-3.5 h-3.5 text-[#38BDF8]" />
-                    <span>Location</span>
-                  </label>
-                  <div className="relative">
+                <div className="space-y-3">
+                  {/* Location Field */}
+                  <div className="space-y-1">
+                    <label className="text-slate-400 text-[11px] font-semibold block">SURVEY LOCATION / SECTOR</label>
                     <input
                       type="text"
                       value={locationName}
                       onChange={(e) => setLocationName(e.target.value)}
-                      className="w-full bg-[#030712] border border-slate-800 rounded-lg px-3 py-2.5 text-slate-200 focus:border-[#38BDF8] focus:outline-none"
+                      className="w-full bg-[#030712] border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:border-[#38BDF8] focus:outline-none"
                     />
-                    <Radio className="w-4 h-4 text-slate-500 absolute right-3 top-3" />
+                  </div>
+
+                  {/* Depth & Frequency Grid */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-slate-400 text-[11px] font-semibold block">DEPTH (METERS)</label>
+                      <input
+                        type="number"
+                        value={depthMeters}
+                        onChange={(e) => setDepthMeters(Number(e.target.value))}
+                        className="w-full bg-[#030712] border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:border-[#38BDF8] focus:outline-none"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-slate-400 text-[11px] font-semibold block">SWATH WIDTH (M)</label>
+                      <input
+                        type="number"
+                        value={swathWidth}
+                        onChange={(e) => setSwathWidth(Number(e.target.value))}
+                        className="w-full bg-[#030712] border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:border-[#38BDF8] focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Sonar Frequency */}
+                  <div className="space-y-1">
+                    <label className="text-slate-400 text-[11px] font-semibold block">SONAR FREQUENCY</label>
+                    <select
+                      value={frequency}
+                      onChange={(e) => setFrequency(e.target.value)}
+                      className="w-full bg-[#030712] border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:border-[#38BDF8] focus:outline-none"
+                    >
+                      <option value="800 kHz High Precision">800 kHz High Precision</option>
+                      <option value="455 kHz Dual Frequency">455 kHz Dual Frequency</option>
+                      <option value="900 kHz Deep Swath">900 kHz Deep Swath</option>
+                    </select>
+                  </div>
+
+                  {/* Notes */}
+                  <div className="space-y-1">
+                    <label className="text-slate-400 text-[11px] font-semibold block">MISSION NOTES</label>
+                    <textarea
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      rows={3}
+                      className="w-full bg-[#030712] border border-slate-800 rounded-lg p-3 text-slate-200 focus:border-[#38BDF8] focus:outline-none resize-none"
+                    />
                   </div>
                 </div>
+              </div>
 
-                {/* 2. Survey Depth */}
-                <div className="space-y-1.5">
-                  <label className="block text-slate-400 text-[11px] flex items-center gap-1.5">
-                    <Waves className="w-3.5 h-3.5 text-[#38BDF8]" />
-                    <span>Survey Depth (meters)</span>
-                  </label>
-                  <input
-                    type="number"
-                    value={depthMeters}
-                    onChange={(e) => setDepthMeters(parseFloat(e.target.value) || 25)}
-                    className="w-full bg-[#030712] border border-slate-800 rounded-lg px-3 py-2.5 text-slate-200 focus:border-[#38BDF8] focus:outline-none"
-                  />
-                </div>
-
-                {/* 3. Capture Date & Time */}
-                <div className="space-y-1.5">
-                  <label className="block text-slate-400 text-[11px] flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5 text-[#38BDF8]" />
-                    <span>Capture Date & Time</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={dateTime}
-                    onChange={(e) => setDateTime(e.target.value)}
-                    className="w-full bg-[#030712] border border-slate-800 rounded-lg px-3 py-2.5 text-slate-200 focus:border-[#38BDF8] focus:outline-none"
-                  />
-                </div>
-
-                {/* 4. Water Conditions */}
-                <div className="space-y-1.5">
-                  <label className="block text-slate-400 text-[11px] flex items-center gap-1.5">
-                    <Droplets className="w-3.5 h-3.5 text-[#38BDF8]" />
-                    <span>Water Conditions</span>
-                  </label>
-                  <select
-                    value={waterConditions}
-                    onChange={(e) => setWaterConditions(e.target.value)}
-                    className="w-full bg-[#030712] border border-slate-800 rounded-lg px-3 py-2.5 text-slate-200 focus:border-[#38BDF8] focus:outline-none"
-                  >
-                    <option value="Clear weather, low current, good visibility">Clear weather, low current, good visibility</option>
-                    <option value="Moderate swell, medium turbidity">Moderate swell, medium turbidity</option>
-                    <option value="High thermocline, deep currents">High thermocline, deep currents</option>
-                  </select>
-                </div>
-
-                {/* 5. Sonar Frequency */}
-                <div className="space-y-1.5">
-                  <label className="block text-slate-400 text-[11px] flex items-center gap-1.5">
-                    <Radio className="w-3.5 h-3.5 text-[#38BDF8]" />
-                    <span>Sonar Frequency</span>
-                  </label>
-                  <select
-                    value={frequency}
-                    onChange={(e) => setFrequency(e.target.value)}
-                    className="w-full bg-[#030712] border border-slate-800 rounded-lg px-3 py-2.5 text-slate-200 focus:border-[#38BDF8] focus:outline-none"
-                  >
-                    <option value="800 kHz (High Precision)">800 kHz (High Precision)</option>
-                    <option value="455 kHz (Dual Beam Standard)">455 kHz (Dual Beam Standard)</option>
-                    <option value="120 kHz (Deep Sea Swath)">120 kHz (Deep Sea Swath)</option>
-                  </select>
-                </div>
-
-                {/* 6. Mission Notes */}
-                <div className="space-y-1.5">
-                  <label className="block text-slate-400 text-[11px] flex items-center gap-1.5">
-                    <Edit3 className="w-3.5 h-3.5 text-[#38BDF8]" />
-                    <span>Mission Notes (optional)</span>
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    className="w-full bg-[#030712] border border-slate-800 rounded-lg p-2.5 text-slate-200 font-sans text-xs focus:border-[#38BDF8] focus:outline-none"
-                    placeholder="Clear weather, low current, good visibility."
-                  />
-                </div>
+              {/* Status Info Box */}
+              <div className="p-4 bg-[#030712] border border-slate-800 rounded-xl space-y-1">
+                <span className="text-slate-500 text-[10px] block">VESSEL PLATFORM</span>
+                <strong className="text-slate-200 text-xs">INS Sagar Kanya (MoES-04)</strong>
               </div>
             </div>
           </div>
-
-          {/* BOTTOM ACTION BAR */}
-          <div className="bg-[#0B132B]/60 backdrop-blur-md border border-slate-800/80 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 font-mono text-xs relative overflow-hidden">
-            {/* Left Action: Abort Mission */}
-            <button
-              onClick={handleAbortMission}
-              className="px-6 py-3 rounded-xl bg-[#030712] hover:bg-red-950 text-slate-300 hover:text-red-400 border border-slate-800 hover:border-red-800/80 font-bold transition-all flex items-center gap-2 cursor-pointer z-10"
-            >
-              <X className="w-4 h-4" />
-              <span>Abort Mission</span>
-            </button>
-
-            {/* Right Action: Begin Ocean Analysis -> */}
-            <button
-              disabled={!file}
-              onClick={startPipeline}
-              className={`px-8 py-3.5 rounded-xl font-bold transition-all flex items-center gap-3 z-10 ${
-                file
-                  ? 'bg-[#38BDF8] hover:bg-[#0EA5E9] text-[#030712] shadow-cyan-glow cursor-pointer'
-                  : 'bg-slate-900 border border-slate-800 text-slate-500 opacity-50 cursor-not-allowed'
-              }`}
-            >
-              <span>Begin Ocean Analysis</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
         </div>
-      )}
-
-      {/* STEP 2: OPERATIONAL SONAR PROCESSING PIPELINE */}
-      {currentStep === 'PROCESSING' && (
+      ) : (
+        /* PROCESSING PIPELINE EXECUTION VIEW */
         <div className="space-y-8 bg-[#0B132B]/60 backdrop-blur-md border border-slate-800/80 rounded-2xl p-8 relative overflow-hidden font-sans">
           {/* Header */}
           <div className="text-center space-y-1">
             <h1 className="text-3xl font-serif font-bold text-white flex items-center justify-center gap-2">
               <span>Executing Sonar AI Pipeline</span>
               <span className="text-xs font-mono text-[#38BDF8] bg-[#38BDF8]/10 px-2.5 py-0.5 rounded border border-[#38BDF8]/30 font-bold">
-                .SON PARSER
+                .ZIP PARSER
               </span>
             </h1>
             <p className="text-xs text-slate-400 font-sans">
@@ -521,7 +459,7 @@ export const NewAnalysisPage: React.FC = () => {
               </div>
 
               <p className="text-sm font-serif text-slate-200 z-10 font-bold">
-                Processing Side-Scan Sonar Ping Sweeps (.SON Format)...
+                Processing Sonar Data Archive (.ZIP Format)...
               </p>
               <p className="text-xs font-mono text-slate-400 z-10 flex items-center gap-2">
                 <Loader2 className="w-3.5 h-3.5 text-[#38BDF8] animate-spin" />
@@ -533,27 +471,21 @@ export const NewAnalysisPage: React.FC = () => {
             <div className="p-6 bg-red-950/40 border border-red-800/80 rounded-2xl space-y-4 font-mono text-xs">
               <div className="flex items-center gap-3 text-red-400">
                 <AlertCircle className="w-6 h-6" />
-                <h3 className="text-lg font-bold">Processing Pipeline Error on stage: {failedStageName}</h3>
+                <div>
+                  <h3 className="text-sm font-bold">Pipeline Signal Interrupted</h3>
+                  <p className="text-xs text-slate-300">
+                    Failed stage: <strong className="text-red-300">{failedStageName}</strong>. acoustic telemetry frame checksum error.
+                  </p>
+                </div>
               </div>
 
-              <p className="text-slate-300 font-sans text-sm">
-                Acoustic Signal Attenuation: Transducer multipath interference detected. Signal-to-noise ratio below operational threshold (dB &lt; 12.4).
-              </p>
-
-              <div className="flex items-center gap-4 pt-2">
+              <div className="flex items-center gap-3 pt-2">
                 <button
-                  onClick={() => startPipeline()}
-                  className="px-6 py-2.5 rounded-lg bg-[#38BDF8] hover:bg-[#0EA5E9] text-[#030712] font-bold transition-all shadow-cyan-glow flex items-center gap-2 cursor-pointer"
+                  onClick={() => setIsProcessing(false)}
+                  className="px-4 py-2 bg-[#030712] hover:bg-slate-800 text-white rounded-lg border border-slate-700 flex items-center gap-2 cursor-pointer"
                 >
                   <RotateCcw className="w-4 h-4" />
-                  <span>Retry Processing</span>
-                </button>
-
-                <button
-                  onClick={() => setCurrentStep('UPLOAD')}
-                  className="px-6 py-2.5 rounded-lg bg-[#030712] hover:bg-slate-800 text-slate-300 border border-slate-800 font-bold transition-colors cursor-pointer"
-                >
-                  Return to Upload
+                  <span>Retry Pipeline</span>
                 </button>
               </div>
             </div>
