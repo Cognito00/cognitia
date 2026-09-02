@@ -1,41 +1,68 @@
 from fastapi import APIRouter, HTTPException
-
 from config import supabase
 from services.geolocation_service import get_detection_location
-
 
 router = APIRouter()
 
 
 @router.post("/detections/{detection_id}/geolocate")
 def geolocate_detection(detection_id: int):
-
     try:
+        # 1. Get the detection
         detection_response = (
             supabase
             .table("detections")
             .select("*")
             .eq("id", detection_id)
+            .single()
             .execute()
         )
 
-        if not detection_response.data:
+        detection = detection_response.data
+
+        if not detection:
             raise HTTPException(
                 status_code=404,
                 detail="Detection not found"
             )
 
-        detection = detection_response.data[0]
+        image_id = detection["image_id"]
 
-        metadata_file_path = "../B001.json"
+        # 2. Get the sonar image record
+        image_response = (
+            supabase
+            .table("sonar_images")
+            .select("*")
+            .eq("id", image_id)
+            .single()
+            .execute()
+        )
 
+        image = image_response.data
+
+        if not image:
+            raise HTTPException(
+                status_code=404,
+                detail="Sonar image record not found"
+            )
+
+        metadata_file_path = image["metadata_json_path"]
+
+        if not metadata_file_path:
+            raise HTTPException(
+                status_code=400,
+                detail="Metadata JSON path not available"
+            )
+
+        # 3. Calculate detection location
         location = get_detection_location(
             metadata_file_path,
             detection["x1"],
             detection["x2"]
         )
 
-        response = (
+        # 4. Save latitude and longitude in Supabase
+        update_response = (
             supabase
             .table("detections")
             .update({
@@ -48,8 +75,11 @@ def geolocate_detection(detection_id: int):
 
         return {
             "message": "Detection geolocated successfully",
-            "location": location,
-            "data": response.data
+            "detection_id": detection_id,
+            "latitude": location["latitude"],
+            "longitude": location["longitude"],
+            "depth_m": location["depth_m"],
+            "time_ms": location["time_ms"]
         }
 
     except HTTPException:

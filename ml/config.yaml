@@ -1,5 +1,5 @@
 model:
-  path: "C:/SIH_Dataset/YOLO_Training/clean_ommd_v2_baseline-3/weights/best.pt"
+  path: "../models/best.pt"
   version: "sonar-yolo11n-mvp-01"
   confidence_threshold: 0.25
 
@@ -9,6 +9,6 @@ classes:
   2: Ghost-Fishing-Gear
 
 inference:
-  image_size: 768
+  image_size: 960
   bbox_format: pixel_xyxy
   confidence_format: percentage
