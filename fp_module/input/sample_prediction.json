@@ -1,0 +1,22 @@
+{
+  "image_id": "sample_image.jpg",
+  "model_version": "sonar-yolo11n-mvp-01",
+  "image_width": 1280,
+  "image_height": 1280,
+  "detections": [
+    {
+      "detection_id": 8,
+      "class_id": 1,
+      "class_name": "Other-Man-Made-Debris",
+      "confidence": 0.82,
+      "bbox": {"x1": 50, "y1": 60, "x2": 160, "y2": 180}
+    },
+    {
+      "detection_id": 9,
+      "class_id": 2,
+      "class_name": "Ghost-Fishing-Gear",
+      "confidence": 0.34,
+      "bbox": {"x1": 200, "y1": 210, "x2": 310, "y2": 310}
+    }
+  ]
+}
