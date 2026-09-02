@@ -1,0 +1,141 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-display: 'Plus Jakarta Sans', sans-serif;
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* Design System Colors & Utility Variables */
+  --primary: #38BDF8;
+  --plastic: #F59E0B;
+  --ghostnet: #EF4444;
+  --metal: #6366F1;
+  --fishing: #10B981;
+  --amber-scan: #F59E0B;
+  --ease-premium: cubic-bezier(0.16, 1, 0.3, 1);
+  --shadow-glow: 0 20px 40px -15px rgba(14, 165, 233, 0.2);
+}
+
+@layer base {
+  body {
+    @apply bg-[#030712] text-slate-200 font-sans antialiased selection:bg-[#38BDF8]/30 selection:text-[#38BDF8];
+    background-image: 
+      radial-gradient(ellipse at 50% 0%, rgba(14, 165, 233, 0.08) 0%, transparent 65%),
+      radial-gradient(ellipse at 80% 100%, rgba(56, 189, 248, 0.05) 0%, transparent 50%);
+  }
+
+  h1, h2, h3, h4, .font-serif, .font-serif-display {
+    font-family: var(--font-display);
+  }
+}
+
+/* Glassmorphism Utilities */
+.glass {
+  background: rgba(11, 19, 43, 0.6);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+}
+
+.glass-soft {
+  background: rgba(3, 7, 18, 0.8);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Premium Hover & Elevation Physics */
+.premium-hover-card {
+  transition: all 0.35s var(--ease-premium);
+  will-change: transform, box-shadow, border-color;
+}
+
+.premium-hover-card:hover {
+  transform: translateY(-4px) scale(1.01);
+  box-shadow: var(--shadow-glow);
+  border-color: rgba(56, 189, 248, 0.5) !important;
+}
+
+/* Staggered Fade Up Keyframe */
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-up {
+  animation: fadeUp 0.8s var(--ease-premium) forwards;
+}
+
+/* Ocean Depth Visual Divider */
+.ocean-depth-divider {
+  height: 1px;
+  background: linear-gradient(
+    90deg, 
+    transparent 0%, 
+    rgba(14, 165, 233, 0.2) 20%, 
+    rgba(56, 189, 248, 0.6) 50%, 
+    rgba(14, 165, 233, 0.2) 80%, 
+    transparent 100%
+  );
+  position: relative;
+}
+
+.ocean-depth-divider::after {
+  content: '';
+  position: absolute;
+  top: -3px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 7px;
+  height: 7px;
+  background-color: #38BDF8;
+  border-radius: 50%;
+  box-shadow: 0 0 10px #38BDF8;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #030712;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #0B132B;
+  border-radius: 3px;
+  border: 1px solid rgba(56, 189, 248, 0.2);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #16335F;
+}
+
+/* Leaflet Dark Theme Overrides */
+.leaflet-container {
+  background-color: #030712 !important;
+  font-family: var(--font-sans) !important;
+}
+
+.leaflet-popup-content-wrapper {
+  background-color: #0B132B !important;
+  color: #E2E8F0 !important;
+  border: 1px solid rgba(56, 189, 248, 0.3) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.8), 0 0 25px rgba(56, 189, 248, 0.2) !important;
+  padding: 4px !important;
+}
+
+.leaflet-popup-tip {
+  background-color: #0B132B !important;
+}
