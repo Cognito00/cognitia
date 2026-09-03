@@ -110,7 +110,7 @@ def run_ml_detection(image_path: str):
     # Confidence filtering + Non-Maximum Suppression
     filtered_detections = filter_detections(
         result["detections"],
-        confidence_threshold=0.20,
+        confidence_threshold=0.15,
         iou_threshold=0.50
     )
 
