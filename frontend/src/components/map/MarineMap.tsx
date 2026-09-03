@@ -1,5 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import * as L from 'leaflet';
+(window as any).L = L;
+import 'leaflet.heat';
 import { Analysis } from '../../lib/types/analysis';
 import { 
   MOCK_SURVEY_AREA, 
@@ -80,6 +83,30 @@ export const MarineMap: React.FC<MarineMapProps> = ({
   const [confidenceThreshold, setConfidenceThreshold] = useState<number>(70);
   const [activeDetection, setActiveDetection] = useState<SurveyDetection | null>(MOCK_SURVEY_DETECTIONS[0]);
   const [selectedHotspot, setSelectedHotspot] = useState<SpatialCell | null>(null);
+  const [apiDetections, setApiDetections] = useState<any[]>([]);
+  useEffect(() => {
+  const imageId = "af1d457a-baf3-4e0a-9e65-bca5dd06a9a1";
+
+  fetch(
+    `https://cognitia-backend.onrender.com/images/${imageId}/results`
+  )
+    .then((res) => res.json())
+    .then((data) => {
+  console.log("API RESPONSE:", data);
+
+  setApiDetections(
+    (data.detections || []).map((det: any) => ({
+      ...det,
+
+      xPercent: (((det.x1 + det.x2) / 2) / 1000) * 100,
+      yPercent: (((det.y1 + det.y2) / 2) / 650) * 100,
+    }))
+  );
+})
+    .catch((err) => {
+      console.error("Heatmap API Error:", err);
+    });
+}, []);
 
   // Interactive Viewport Zoom State (Scale 1x to 2x)
   const [zoomScale, setZoomScale] = useState<number>(1);
@@ -100,13 +127,20 @@ export const MarineMap: React.FC<MarineMapProps> = ({
   };
 
   // Filter detections from Single Source of Truth dataset
-  const filteredDetections = useMemo(() => {
-    return MOCK_SURVEY_DETECTIONS.filter((det) => {
-      if (det.confidence < confidenceThreshold) return false;
-      if (objectTypeFilter !== 'ALL' && det.objectType !== objectTypeFilter) return false;
-      return true;
-    });
-  }, [confidenceThreshold, objectTypeFilter]);
+ const filteredDetections = useMemo(() => {
+  return apiDetections.filter((det) => {
+    if (det.model_confidence * 100 < confidenceThreshold)
+      return false;
+
+    if (
+      objectTypeFilter !== 'ALL' &&
+      det.class_name !== objectTypeFilter
+    )
+      return false;
+
+    return true;
+  });
+}, [apiDetections, confidenceThreshold, objectTypeFilter]);
 
   // SCIENTIFIC CELL-BASED SPATIAL DENSITY GRID CALCULATION (20 Cols x 12 Rows)
   const spatialGridCells = useMemo(() => {
