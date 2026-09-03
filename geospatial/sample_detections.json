@@ -1,0 +1,20 @@
+[
+  {
+    "class": "plastic",
+    "confidence": 0.95,
+    "latitude": 18.5204,
+    "longitude": 73.8567
+  },
+  {
+    "class": "metal",
+    "confidence": 0.88,
+    "latitude": 18.5210,
+    "longitude": 73.8575
+  },
+  {
+    "class": "ghost_net",
+    "confidence": 0.91,
+    "latitude": 18.5220,
+    "longitude": 73.8580
+  }
+]

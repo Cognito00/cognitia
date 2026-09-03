@@ -1,0 +1,8 @@
+# Backend image retrieval configuration.
+# This endpoint is intentionally left blank until the backend team provides the final API contract.
+# Use environment variables to override values without editing source code.
+backend:
+  image_api_url: ""  # Set via BACKEND_IMAGE_API_URL or update this once the backend team provides the final endpoint.
+  timeout_seconds: 15
+  local_image_dir: "."  # Local fallback for testing without a backend API.
+  image_query_parameter: "image_id"

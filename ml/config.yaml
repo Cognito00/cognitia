@@ -1,0 +1,14 @@
+model:
+  path: "../models/best.pt"
+  version: "MVP-04-V5-Rec14"
+  confidence_threshold: 0.15
+
+classes:
+  0: Shipwreck
+  1: Other-Man-Made-Debris
+  2: Ghost-Fishing-Gear
+
+inference:
+  image_size: 960
+  bbox_format: pixel_xyxy
+  confidence_format: decimal

@@ -1,0 +1,372 @@
+[1mdiff --git a/frontend/src/components/map/MarineMap.tsx b/frontend/src/components/map/MarineMap.tsx[m
+[1mnew file mode 100644[m
+[1mindex 0000000..81c724c[m
+[1m--- /dev/null[m
+[1m+++ b/frontend/src/components/map/MarineMap.tsx[m
+[36m@@ -0,0 +1,778 @@[m
+[32m+[m[32mimport React, { useState, useMemo } from 'react';[m
+[32m+[m[32mimport { useNavigate } from 'react-router-dom';[m
+[32m+[m[32mimport { Analysis } from '../../lib/types/analysis';[m
+[32m+[m[32mimport {[m[41m [m
+[32m+[m[32m  MOCK_SURVEY_AREA,[m[41m [m
+[32m+[m[32m  MOCK_SURVEY_DETECTIONS,[m[41m [m
+[32m+[m[32m  SurveyDetection,[m[41m [m
+[32m+[m[32m  SurveyObjectType[m[41m [m
+[32m+[m[32m} from '../../lib/mock/mockSurveyMap';[m
+[32m+[m[32mimport {[m[41m [m
+[32m+[m[32m  Compass,[m[41m [m
+[32m+[m[32m  Flame,[m[41m [m
+[32m+[m[32m  Sliders,[m[41m [m
+[32m+[m[32m  ZoomIn,[m[41m [m
+[32m+[m[32m  ZoomOut,[m[41m [m
+[32m+[m[32m  Crosshair,[m[41m [m
+[32m+[m[32m  Anchor,[m[41m [m
+[32m+[m[32m  Waves,[m[41m [m
+[32m+[m[32m  Box,[m[41m [m
+[32m+[m[32m  Cylinder,[m[41m [m
+[32m+[m[32m  Maximize2,[m
+[32m+[m[32m  ExternalLink,[m
+[32m+[m[32m  Layers,[m
+[32m+[m[32m  Radio,[m
+[32m+[m[32m  X,[m
+[32m+[m[32m  Grid,[m
+[32m+[m[32m  Info,[m
+[32m+[m[32m  ShieldAlert[m
+[32m+[m[32m} from 'lucide-react';[m
+[32m+[m
+[32m+[m[32minterface MarineMapProps {[m
+[32m+[m[32m  analyses?: Analysis[];[m
+[32m+[m[32m  selectedScanId?: string | null;[m
+[32m+[m[32m  height?: string;[m
+[32m+[m[32m  showFilters?: boolean;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m// Icon and color mapping per object type[m
+[32m+[m[32mconst getObjectTypeStyle = (type: SurveyObjectType) => {[m
+[32m+[m[32m  switch (type) {[m
+[32m+[m[32m    case 'Ghost Fishing Net':[m
+[32m+[m[32m      return { label: 'Ghost Net', color: '#EF4444', icon: '🌐', bg: 'bg-red-950/90', border: 'border-red-500' };[m
+[32m+[m[32m    case 'Shipwreck / Container':[m
+[32m+[m[32m      return { label: 'Shipwreck', color: '#F59E0B', icon: '⚓', bg: 'bg-amber-950/90', border: 'border-amber-500' };[m
+[32m+[m[32m    case 'Submerged Metal Pipe':[m
+[32m+[m[32m      return { label: 'Metal Pipe', color: '#6366F1', icon: '⚡', bg: 'bg-indigo-950/90', border: 'border-indigo-500' };[m
+[32m+[m[32m    case 'Marine Debris':[m
+[32m+[m[32m      return { label: 'Marine Debris', color: '#10B981', icon: '📦', bg: 'bg-emerald-950/90', border: 'border-emerald-500' };[m
+[32m+[m[32m    default:[m
+[32m+[m[32m      return { label: 'Anomaly', color: '#38BDF8', icon: '🎯', bg: 'bg-cyan-950/90', border: 'border-cyan-500' };[m
+[32m+[m[32m  }[m
+[32m+[m[32m};[m
+[32m+[m
+[32m+[m[32m// Spatial Grid Cell Structure for Anomaly Density Calculations[m
+[32m+[m[32minterface SpatialCell {[m
+[32m+[m[32m  col: number;[m
+[32m+[m[32m  row: number;[m
+[32m+[m[32m  cx: number;[m
+[32m+[m[32m  cy: number;[m
+[32m+[m[32m  detections: SurveyDetection[];[m
+[32m+[m[32m  count: number;[m
+[32m+[m[32m  densityLevel: number; // 0: None, 1: Low, 2: Medium, 3: High, 4: Very High[m
+[32m+[m[32m  dominantType: SurveyObjectType;[m
+[32m+[m[32m  avgConfidence: number;[m
+[32m+[m[32m  minDepth: number;[m
+[32m+[m[32m  maxDepth: number;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mexport const MarineMap: React.FC<MarineMapProps> = ({[m
+[32m+[m[32m  analyses,[m
+[32m+[m[32m  selectedScanId = null,[m
+[32m+[m[32m  height = '620px',[m
+[32m+[m[32m  showFilters = true[m
+[32m+[m[32m}) => {[m
+[32m+[m[32m  const navigate = useNavigate();[m
+[32m+[m
+[32m+[m[32m  // Mode Switcher: Mode 1 = 'SONAR_SURVEY' (Default), Mode 2 = 'ANOMALY_HEATMAP'[m
+[32m+[m[32m  const [visualizationMode, setVisualizationMode] = useState<'SONAR_SURVEY' | 'ANOMALY_HEATMAP'>('SONAR_SURVEY');[m
+[32m+[m[32m  const [objectTypeFilter, setObjectTypeFilter] = useState<string>('ALL');[m
+[32m+[m[32m  const [confidenceThreshold, setConfidenceThreshold] = useState<number>(70);[m
+[32m+[m[32m  const [activeDetection, setActiveDetection] = useState<SurveyDetection | null>(MOCK_SURVEY_DETECTIONS[0]);[m
+[32m+[m[32m  const [selectedHotspot, setSelectedHotspot] = useState<SpatialCell | null>(null);[m
+[32m+[m
+[32m+[m[32m  // Interactive Viewport Zoom State (Scale 1x to 2x)[m
+[32m+[m[32m  const [zoomScale, setZoomScale] = useState<number>(1);[m
+[32m+[m
+[32m+[m[32m  // Survey Area Box Dimensions inside 1000 x 650 SVG canvas[m
+[32m+[m[32m  const SURVEY_BOX = {[m
+[32m+[m[32m    x: 90,[m
+[32m+[m[32m    y: 60,[m
+[32m+[m[32m    width: 820,[m
+[32m+[m[32m    height: 530,[m
+[32m+[m[32m    rx: 16[m
+[32m+[m[32m  };[m
+[32m+[m
+[32m+[m[32m  const convertToCanvasCoords = (xPercent: number, yPercent: number) => {[m
+[32m+[m[32m    const px = SURVEY_BOX.x + (xPercent / 100) * SURVEY_BOX.width;[m
+[32m+[m[32m    const py = SURVEY_BOX.y + (yPercent / 100) * SURVEY_BOX.height;[m
+[32m+[m[32m    return { px, py };[m
+[32m+[m[32m  };[m
+[32m+[m
+[32m+[m[32m  // Filter detections from Single Source of Truth dataset[m
+[32m+[m[32m  const filteredDetections = useMemo(() => {[m
+[32m+[m[32m    return MOCK_SURVEY_DETECTIONS.filter((det) => {[m
+[32m+[m[32m      if (det.confidence < confidenceThreshold) return false;[m
+[32m+[m[32m      if (objectTypeFilter !== 'ALL' && det.objectType !== objectTypeFilter) return false;[m
+[32m+[m[32m      return true;[m
+[32m+[m[32m    });[m
+[32m+[m[32m  }, [confidenceThreshold, objectTypeFilter]);[m
+[32m+[m
+[32m+[m[32m  // SCIENTIFIC CELL-BASED SPATIAL DENSITY GRID CALCULATION (20 Cols x 12 Rows)[m
+[32m+[m[32m  const spatialGridCells = useMemo(() => {[m
+[32m+[m[32m    const COLS = 20;[m
+[32m+[m[32m    const ROWS = 12;[m
+[32m+[m[32m    const cellWidth = SURVEY_BOX.width / COLS;[m
+[32m+[m[32m    const cellHeight = SURVEY_BOX.height / ROWS;[m
+[32m+[m
+[32m+[m[32m    const cells: SpatialCell[] = [];[m
+[32m+[m
+[32m+[m[32m    for (let r = 0; r < ROWS; r++) {[m
+[32m+[m[32m      for (let c = 0; c < COLS; c++) {[m
+[32m+[m[32m        const cellXMin = (c / COLS) * 100;[m
+[32m+[m[32m        const cellXMax = ((c + 1) / COLS) * 100;[m
+[32m+[m[32m        const cellYMin = (r / ROWS) * 100;[m
+[32m+[m[32m        const cellYMax = ((r + 1) / ROWS) * 100;[m
+[32m+[m
+[32m+[m[32m        const cx = SURVEY_BOX.x + (c + 0.5) * cellWidth;[m
+[32m+[m[32m        const cy = SURVEY_BOX.y + (r + 0.5) * cellHeight;[m
+[32m+[m
+[32m+[m[32m        // Find detections falling near or within this cell's influence radius[m
+[32m+[m[32m        const cellDetections = filteredDetections.filter((d) => {[m
+[32m+[m[32m          return ([m
+[32m+[m[32m            d.xPercent >= cellXMin - 2.5 &&[m
+[32m+[m[32m            d.xPercent <= cellXMax + 2.5 &&[m
+[32m+[m[32m            d.yPercent >= cellYMin - 2.5 &&[m
+[32m+[m[32m            d.yPercent <= cellYMax + 2.5[m
+[32m+[m[32m          );[m
+[32m+[m[32m        });[m
+[32m+[m
+[32m+[m[32m        const count = cellDetections.length;[m
+[32m+[m
+[32m+[m[32m        if (count > 0) {[m
+[32m+[m[32m          // Calculate dominant object type in cell[m
+[32m+[m[32m          const typeCounts: Record<string, number> = {};[m
+[32m+[m[32m          let confSum = 0;[m
+[32m+[m[32m          let minD = 999;[m
+[32m+[m[32m          let maxD = 0;[m
+[32m+[m
+[32m+[m[32m          cellDetections.forEach((d) => {[m
+[32m+[m[32m            typeCounts[d.objectType] = (typeCounts[d.objectType] || 0) + 1;[m
+[32m+[m[32m            confSum += d.confidence;[m
+[32m+[m[32m            if (d.depthMeters < minD) minD = d.depthMeters;[m
+[32m+[m[32m            if (d.depthMeters > maxD) maxD = d.depthMeters;[m
+[32m+[m[32m          });[m
+[32m+[m
+[32m+[m[32m          let dominantType: SurveyObjectType = 'Ghost Fishing Net';[m
+[32m+[m[32m          let maxCount = 0;[m
+[32m+[m[32m          Object.entries(typeCounts).forEach(([type, cnt]) => {[m
+[32m+[m[32m            if (cnt > maxCount) {[m
+[32m+[m[32m              maxCount = cnt;[m
+[32m+[m[32m              dominantType = type as SurveyObjectType;[m
+[32m+[m[32m            }[m
+[32m+[m[32m          });[m
+[32m+[m
+[32m+[m[32m          // Density level scaling: 1 (LOW), 2 (MEDIUM), 3 (HIGH), 4 (VERY HIGH)[m
+[32m+[m[32m          let densityLevel = 1;[m
+[32m+[m[32m          if (count >= 5) densityLevel = 4;[m
+[32m+[m[32m          else if (count >= 3) densityLevel = 3;[m
+[32m+[m[32m          else if (count >= 2) densityLevel = 2;[m
+[32m+[m
+[32m+[m[32m          cells.push({[m
+[32m+[m[32m            col: c,[m
+[32m+[m[32m            row: r,[m
+[32m+[m[32m            cx,[m
+[32m+[m[32m            cy,[m
+[32m+[m[32m            detections: cellDetections,[m
+[32m+[m[32m            count,[m
+[32m+[m[32m            densityLevel,[m
+[32m+[m[32m            dominantType,[m
+[32m+[m[32m            avgConfidence: Number((confSum / count).toFixed(1)),[m
+[32m+[m[32m            minDepth: minD === 999 ? 25.0 : minD,[m
+[32m+[m[32m            maxDepth: maxD === 0 ? 25.0 : maxD[m
+[32m+[m[32m          });[m
+[32m+[m[32m        }[m
+[32m+[m[32m      }[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    return cells;[m
+[32m+[m[32m  }, [filteredDetections]);[m
+[32m+[m
+[32m+[m[32m  const handleZoomIn = () => setZoomScale((prev) => Math.min(prev + 0.25, 2.0));[m
+[32m+[m[32m  const handleZoomOut = () => setZoomScale((prev) => Math.max(prev - 0.25, 1.0));[m
+[32m+[m[32m  const handleResetView = () => {[m
+[32m+[m[32m    setZoomScale(1.0);[m
+[32m+[m[32m    if (filteredDetections.length > 0) setActiveDetection(filteredDetections[0]);[m
+[32m+[m[32m    setSelectedHotspot(null);[m
+[32m+[m[32m  };[m
+[32m+[m
+[32m+[m[32m  return ([m
+[32m+[m[32m    <div className="relative bg-[#030712] border border-slate-800 rounded-xl overflow-hidden flex flex-col select-none shadow-2xl" style={{ height }}>[m
+[32m+[m[32m      {/* PROFESSIONAL MISSION CONTROL CONTROL BAR */}[m
+[32m+[m[32m      {showFilters && ([m
+[32m+[m[32m        <div className="h-14 bg-[#0B132B]/90 backdrop-blur-md border-b border-slate-800/80 px-5 flex flex-wrap items-center justify-between gap-4 z-20 text-xs font-mono">[m
+[32m+[m[32m          {/* Mode Switcher Pill */}[m
+[32m+[m[32m          <div className="flex items-center bg-[#030712] p-1 border border-slate-800 rounded-lg">[m
+[32m+[m[32m            <button[m
+[32m+[m[32m              onClick={() => {[m
+[32m+[m[32m                setVisualizationMode('SONAR_SURVEY');[m
+[32m+[m[32m                setSelectedHotspot(null);[m
+[32m+[m[32m              }}[m
+[32m+[m[32m              className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${[m
+[32m+[m[32m                visualizationMode === 'SONAR_SURVEY'[m
+[32m+[m[32m                  ? 'bg-[#38BDF8] text-[#030712] shadow-cyan-glow'[m
+[32m+[m[32m                  : 'text-slate-400 hover:text-slate-200'[m
+[32m+[m[32m              }`}[m
+[32m+[m[32m            >[m
+[32m+[m[32m              <Crosshair className="w-3.5 h-3.5" />[m
+[32m+[m[32m              <span>SONAR SURVEY MAP</span>[m
+[32m+[m[32m            </button>[m
+[32m+[m[32m            <button[m
+[32m+[m[32m              onClick={() => {[m
+[32m+[m[32m                setVisualizationMode('ANOMALY_HEATMAP');[m
+[32m+[m[32m                setActiveDetection(null);[m
+[32m+[m[32m              }}[m
+[32m+[m[32m              className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${[m
+[32m+[m[32m                visualizationMode === 'ANOMALY_HEATMAP'[m
+[32m+[m[32m                  ? 'bg-[#38BDF8] text-[#030712] shadow-cyan-glow'[m
+[32m+[m[32m                  : 'text-slate-400 hover:text-slate-200'[m
+[32m+[m[32m              }`}[m
+[32m+[m[32m            >[m
+[32m+[m[32m              <Flame className="w-3.5 h-3.5" />[m
+[32m+[m[32m              <span>ANOMALY HEATMAP</span>[m
+[32m+[m[32m            </button>[m
+[32m+[m[32m          </div>[m
+[32m+[m
+[32m+[m[32m          {/* Filtering Controls */}[m
+[32m+[m[32m          <div className="flex items-center gap-5">[m
+[32m+[m[32m            {/* Object Type Dropdown */}[m
+[32m+[m[32m            <div className="flex items-center gap-2">[m
+[32m+[m[32m              <span className="text-slate-400 text-[11px]">Object Type:</span>[m
+[32m+[m[32m              <select[m
+[32m+[m[32m                value={objectTypeFilter}[m
+[32m+[m[32m                onChange={(e) => setObjectTypeFilter(e.target.value)}[m
+[32m+[m[32m                className="bg-[#030712] border border-slate-800 text-slate-200 text-xs rounded-lg px-3.5 py-1.5 focus:border-[#38BDF8] focus:outline-none"[m
+[32m+[m[32m              >[m
+[32m+[m[32m                <option value="ALL">All Objects ({MOCK_SURVEY_DETECTIONS.length})</option>[m
+[32m+[m[32m                <option value="Ghost Fishing Net">Ghost Nets 🌐</option>[m
+[32m+[m[32m                <option value="Shipwreck / Container">Shipwrecks ⚓</option>[m
+[32m+[m[32m                <option value="Submerged Metal Pipe">Metal Pipes ⚡</option>[m
+[32m+[m[32m                <option value="Marine Debris">Marine Debris 📦</option>[m
+[32m+[m[32m                <option value="Acoustic Anomaly">Anomalies 🎯</option>[m
+[32m+[m[32m              </select>[m
+[32m+[m[32m            </div>[m
+[32m+[m
+[32m+[m[32m            {/* Minimum Confidence Slider */}[m
+[32m+[m[32m            <div className="flex items-center gap-2.5 bg-[#030712] px-3.5 py-1.5 rounded-lg border border-slate-800">[m
+[32m+[m[32m              <Sliders className="w-3.5 h-3.5 text-[#38BDF8]" />[m
+[32m+[m[32m              <span className="text-slate-400 text-[11px]">Min Conf:</span>[m
+[32m+[m[32m              <input[m
+[32m+[m[32m                type="range"[m
+[32m+[m[32m                min="0"[m
+[32m+[m[32m                max="95"[m
+[32m+[m[32m                step="5"[m
+[32m+[m[32m                value={confidenceThreshold}[m
+[32m+[m[32m                onChange={(e) => setConfidenceThreshold(Number(e.target.value))}[m
+[32m+[m[32m                className="w-24 accent-[#38BDF8] cursor-pointer"[m
+[32m+[m[32m              />[m
+[32m+[m[32m              <span className="text-[#38BDF8] font-bold w-8 text-right">{confidenceThreshold}%</span>[m
+[32m+[m[32m            </div>[m
+[32m+[m[32m          </div>[m
+[32m+[m[32m        </div>[m
+[32m+[m[32m      )}[m
+[32m+[m
+[32m+[m[32m      {/* DEDICATED UNDERWATER SURVEY CANVAS VIEWPORT */}[m
+[32m+[m[32m      <div className="relative flex-1 w-full h-full overflow-hidden bg-[#020617]">[m
+[32m+[m[32m        {/* SVG Bathymetric Sonar Survey Viewport */}[m
+[32m+[m[32m        <svg[m
+[32m+[m[32m          viewBox="0 0 1000 650"[m
+[32m+[m[32m          className="w-full h-full transition-transform duration-500 ease-out"[m
+[32m+[m[32m          style={{ transform: `scale(${zoomScale})` }}[m
+[32m+[m[32m        >[m
+[32m+[m[32m          <defs>[m
+[32m+[m[32m            {/* Survey Area Boundary Clip Path */}[m
+[32m+[m[32m            <clipPath id="survey-area-clip">[m
+[32m+[m[32m              <rect[m
+[32m+[m[32m                x={SURVEY_BOX.x}[m
+[32m+[m[32m                y={SURVEY_BOX.y}[m
+[32m+[m[32m                width={SURVEY_BOX.width}[m
+[32m+[m[32m                height={SURVEY_BOX.height}[m
+[32m+[m[32m                rx={SURVEY_BOX.rx}[m
+[32m+[m[32m              />[m
+[32m+[m[32m            </clipPath>[m
+[32m+[m
+[32m+[m[32m            {/* Scientific Density Hotspot Radial Gradients */}[m
+[32m+[m[32m            <radialGradient id="grad-very-high" cx="50%" cy="50%" r="50%">[m
+[32m+[m[32m              <stop offset="0%" stopColor="#EF4444" stopOpacity="0.95" />[m
+[32m+[m[32m              <stop offset="40%" stopColor="#F97316" stopOpacity="0.7" />[m
+[32m+[m[32m              <stop offset="80%" stopColor="#F59E0B" stopOpacity="0.3" />[m
+[32m+[m[32m              <stop offset="100%" stopColor="#EF4444" stopOpacity="0" />[m
+[32m+[m[32m            </radialGradient>[m
+[32m+[m
+[32m+[m[32m            <radialGradient id="grad-high" cx="50%" cy="50%" r="50%">[m
+[32m+[m[32m              <stop offset="0%" stopColor="#F97316" stopOpacity="0.9" />[m
+[32m+[m[32m              <stop offset="50%" stopColor="#F59E0B" stopOpacity="0.6" />[m
+[32m+[m[32m              <stop offset="100%" stopColor="#F59E0B" stopOpacity="0" />[m
+[32m+[m[32m            </radialGradient>[m
+[32m+[m
+[32m+[m[32m            <radialGradient id="grad-medium" cx="50%" cy="50%" r="50%">[m
+[32m+[m[32m              <stop offset="0%" stopColor="#F59E0B" stopOpacity="0.8" />[m
+[32m+[m[32m              <stop offset="60%" stopColor="#38BDF8" stopOpacity="0.4" />[m
+[32m+[m[32m              <stop offset="100%" stopColor="#38BDF8" stopOpacity="0" />[m
+[32m+[m[32m            </radialGradient>[m
+[32m+[m
+[32m+[m[32m            <radialGradient id="grad-low" cx="50%" cy="50%" r="50%">[m
+[32m+[m[32m              <stop offset="0%" stopColor="#38BDF8" stopOpacity="0.75" />[m
+[32m+[m[32m              <stop offset="70%" stopColor="#38BDF8" stopOpacity="0.25" />[m
+[32m+[m[32m              <stop offset="100%" stopColor="#38BDF8" stopOpacity="0" />[m
+[32m+[m[32m            </radialGradient>[m
+[32m+[m
+[32m+[m[32m            <filter id="spatial-density-blur" x="-50%" y="-50%" width="200%" height="200%">[m
+[32m+[m[32m              <feGaussianBlur stdDeviation="14" />[m
+[32m+[m[32m            </filter>[m
+[32m+[m
+[32m+[m[32m            {/* Seabed Bathymetric Grid Pattern */}[m
+[32m+[m[32m            <pattern id="spatial-survey-grid" width="41" height="44.16" patternUnits="userSpaceOnUse">[m
+[32m+[m[32m              <path d="M 41 0 L 0 0 0 44.16" fill="none" stroke="rgba(56, 189, 248, 0.08)" strokeWidth="1" />[m
+[32m+[m[32m            </pattern>[m
+[32m+[m[32m          </defs>[m
+[32m+[m
+[32m+[m[32m          {/* 1. OUTSIDE SURVEY AREA DIMMED OVERLAY */}[m
+[32m+[m[32m          <rect width="1000" height="650" fill="#020617" opacity="0.95" />[m
+[32m+[m
+[32m+[m[32m          {/* 2. INNER SURVEYED UNDERWATER AREA CONTAINER (INSIDE CLIP PATH) */}[m
+[32m+[m[32m          <g clipPath="url(#survey-area-clip)">[m
+[32m+[m[32m            {/* Seabed Water Column & Spatial Grid Layer */}[m
+[32m+[m[32m            <rect[m
+[32m+[m[32m              x={SURVEY_BOX.x}[m
+[32m+[m[32m              y={SURVEY_BOX.y}[m
+[32m+[m[32m              width={SURVEY_BOX.width}[m
+[32m+[m[32m              height={SURVEY_BOX.height}[m
+[32m+[m[32m              fill="url(#spatial-survey-grid)"[m
+[32m+[m[32m            />[m
+[32m+[m[32m            <rect[m
+[32m+[m[32m              x={SURVEY_BOX.x}[m
+[32m+[m[32m              y={SURVEY_BOX.y}[m
+[32m+[m[32m              width={SURVEY_BOX.width}[m
+[32m+[m[32m              height={SURVEY_BOX.height}[m
+[32m+[m[32m              fill="rgba(11, 19, 43, 0.75)"[m
+[32m+[m[32m            />[m
+[32m+[m
+[32m+[m[32m            {/* Submerged Bathymetric Seabed Depth Contour Curves */}[m
+[32m+[m[32m            <path[m
+[32m+[m[32m              d="M 90 180 C 300 150, 600 220, 910 190"[m
+[32m+[m[32m              fill="none"[m
+[32m+[m[32m              stroke="rgba(56, 189, 248, 0.15)"[m
+[32m+[m[32m              strokeWidth="1.5"[m
+[32m+[m[32m              strokeDasharray="4 4"[m
+[32m+[m[32m            />[m
+[32m+[m[32m            <text x="105" y="175" fill="rgba(56, 189, 248, 0.4)" fontSize="10" fontFamily="monospace">DEPTH: 18.0m</text>[m
+[32m+[m
+[32m+[m[32m            <path[m
+[32m+[m[32m              d="M 90 320 C 350 280, 650 360, 910 310"[m
+[32m+[m[32m              fill="none"[m
+[32m+[m[32m              stroke="rgba(56, 189, 248, 0.15)"[m
+[32m+[m[32m              strokeWidth="1.5"[m
+[32m+[m[32m              strokeDas

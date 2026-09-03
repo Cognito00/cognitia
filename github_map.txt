@@ -1,0 +1,812 @@
+﻿import React, { useState, useMemo, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import * as L from 'leaflet';
+(window as any).L = L;
+import 'leaflet.heat';
+import { Analysis } from '../../lib/types/analysis';
+import { 
+  MOCK_SURVEY_AREA, 
+  MOCK_SURVEY_DETECTIONS, 
+  SurveyDetection, 
+  SurveyObjectType 
+} from '../../lib/mock/mockSurveyMap';
+import { 
+  Compass, 
+  Flame, 
+  Sliders, 
+  ZoomIn, 
+  ZoomOut, 
+  Crosshair, 
+  Anchor, 
+  Waves, 
+  Box, 
+  Cylinder, 
+  Maximize2,
+  ExternalLink,
+  Layers,
+  Radio,
+  X,
+  Grid,
+  Info,
+  ShieldAlert
+} from 'lucide-react';
+
+interface MarineMapProps {
+  analyses?: Analysis[];
+  selectedScanId?: string | null;
+  height?: string;
+  showFilters?: boolean;
+}
+
+// Icon and color mapping per object type
+const getObjectTypeStyle = (type: SurveyObjectType) => {
+  switch (type) {
+    case 'Ghost Fishing Net':
+      return { label: 'Ghost Net', color: '#EF4444', icon: '≡ƒîÉ', bg: 'bg-red-950/90', border: 'border-red-500' };
+    case 'Shipwreck / Container':
+      return { label: 'Shipwreck', color: '#F59E0B', icon: 'ΓÜô', bg: 'bg-amber-950/90', border: 'border-amber-500' };
+    case 'Submerged Metal Pipe':
+      return { label: 'Metal Pipe', color: '#6366F1', icon: 'ΓÜí', bg: 'bg-indigo-950/90', border: 'border-indigo-500' };
+    case 'Marine Debris':
+      return { label: 'Marine Debris', color: '#10B981', icon: '≡ƒôª', bg: 'bg-emerald-950/90', border: 'border-emerald-500' };
+    default:
+      return { label: 'Anomaly', color: '#38BDF8', icon: '≡ƒÄ»', bg: 'bg-cyan-950/90', border: 'border-cyan-500' };
+  }
+};
+
+// Spatial Grid Cell Structure for Anomaly Density Calculations
+interface SpatialCell {
+  col: number;
+  row: number;
+  cx: number;
+  cy: number;
+  detections: SurveyDetection[];
+  count: number;
+  densityLevel: number; // 0: None, 1: Low, 2: Medium, 3: High, 4: Very High
+  dominantType: SurveyObjectType;
+  avgConfidence: number;
+  minDepth: number;
+  maxDepth: number;
+}
+
+export const MarineMap: React.FC<MarineMapProps> = ({
+  analyses,
+  selectedScanId = null,
+  height = '620px',
+  showFilters = true
+}) => {
+  const navigate = useNavigate();
+
+  // Mode Switcher: Mode 1 = 'SONAR_SURVEY' (Default), Mode 2 = 'ANOMALY_HEATMAP'
+  const [visualizationMode, setVisualizationMode] = useState<'SONAR_SURVEY' | 'ANOMALY_HEATMAP'>('SONAR_SURVEY');
+  const [objectTypeFilter, setObjectTypeFilter] = useState<string>('ALL');
+  const [confidenceThreshold, setConfidenceThreshold] = useState<number>(70);
+  const [activeDetection, setActiveDetection] = useState<SurveyDetection | null>(MOCK_SURVEY_DETECTIONS[0]);
+  const [selectedHotspot, setSelectedHotspot] = useState<SpatialCell | null>(null);
+  const [apiDetections, setApiDetections] = useState<any[]>([]);
+  useEffect(() => {
+  const imageId = "af1d457a-baf3-4e0a-9e65-bca5dd06a9a1";
+
+  fetch(
+    `https://cognitia-backend.onrender.com/images/${imageId}/results`
+  )
+    .then((res) => res.json())
+    .then((data) => {
+  console.log("API RESPONSE:", data);
+
+  setApiDetections(
+    (data.detections || []).map((det: any) => ({
+      ...det,
+
+      xPercent: (((det.x1 + det.x2) / 2) / 1000) * 100,
+      yPercent: (((det.y1 + det.y2) / 2) / 650) * 100,
+    }))
+  );
+})
+    .catch((err) => {
+      console.error("Heatmap API Error:", err);
+    });
+}, []);
+
+  // Interactive Viewport Zoom State (Scale 1x to 2x)
+  const [zoomScale, setZoomScale] = useState<number>(1);
+
+  // Survey Area Box Dimensions inside 1000 x 650 SVG canvas
+  const SURVEY_BOX = {
+    x: 90,
+    y: 60,
+    width: 820,
+    height: 530,
+    rx: 16
+  };
+
+  const convertToCanvasCoords = (xPercent: number, yPercent: number) => {
+    const px = SURVEY_BOX.x + (xPercent / 100) * SURVEY_BOX.width;
+    const py = SURVEY_BOX.y + (yPercent / 100) * SURVEY_BOX.height;
+    return { px, py };
+  };
+
+  // Filter detections from Single Source of Truth dataset
+ const filteredDetections = useMemo(() => {
+  return apiDetections.filter((det) => {
+    if (det.model_confidence * 100 < confidenceThreshold)
+      return false;
+
+    if (
+      objectTypeFilter !== 'ALL' &&
+      det.class_name !== objectTypeFilter
+    )
+      return false;
+
+    return true;
+  });
+}, [apiDetections, confidenceThreshold, objectTypeFilter]);
+
+  // SCIENTIFIC CELL-BASED SPATIAL DENSITY GRID CALCULATION (20 Cols x 12 Rows)
+  const spatialGridCells = useMemo(() => {
+    const COLS = 20;
+    const ROWS = 12;
+    const cellWidth = SURVEY_BOX.width / COLS;
+    const cellHeight = SURVEY_BOX.height / ROWS;
+
+    const cells: SpatialCell[] = [];
+
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const cellXMin = (c / COLS) * 100;
+        const cellXMax = ((c + 1) / COLS) * 100;
+        const cellYMin = (r / ROWS) * 100;
+        const cellYMax = ((r + 1) / ROWS) * 100;
+
+        const cx = SURVEY_BOX.x + (c + 0.5) * cellWidth;
+        const cy = SURVEY_BOX.y + (r + 0.5) * cellHeight;
+
+        // Find detections falling near or within this cell's influence radius
+        const cellDetections = filteredDetections.filter((d) => {
+          return (
+            d.xPercent >= cellXMin - 2.5 &&
+            d.xPercent <= cellXMax + 2.5 &&
+            d.yPercent >= cellYMin - 2.5 &&
+            d.yPercent <= cellYMax + 2.5
+          );
+        });
+
+        const count = cellDetections.length;
+
+        if (count > 0) {
+          // Calculate dominant object type in cell
+          const typeCounts: Record<string, number> = {};
+          let confSum = 0;
+          let minD = 999;
+          let maxD = 0;
+
+          cellDetections.forEach((d) => {
+            typeCounts[d.objectType] = (typeCounts[d.objectType] || 0) + 1;
+            confSum += d.confidence;
+            if (d.depthMeters < minD) minD = d.depthMeters;
+            if (d.depthMeters > maxD) maxD = d.depthMeters;
+          });
+
+          let dominantType: SurveyObjectType = 'Ghost Fishing Net';
+          let maxCount = 0;
+          Object.entries(typeCounts).forEach(([type, cnt]) => {
+            if (cnt > maxCount) {
+              maxCount = cnt;
+              dominantType = type as SurveyObjectType;
+            }
+          });
+
+          // Density level scaling: 1 (LOW), 2 (MEDIUM), 3 (HIGH), 4 (VERY HIGH)
+          let densityLevel = 1;
+          if (count >= 5) densityLevel = 4;
+          else if (count >= 3) densityLevel = 3;
+          else if (count >= 2) densityLevel = 2;
+
+          cells.push({
+            col: c,
+            row: r,
+            cx,
+            cy,
+            detections: cellDetections,
+            count,
+            densityLevel,
+            dominantType,
+            avgConfidence: Number((confSum / count).toFixed(1)),
+            minDepth: minD === 999 ? 25.0 : minD,
+            maxDepth: maxD === 0 ? 25.0 : maxD
+          });
+        }
+      }
+    }
+
+    return cells;
+  }, [filteredDetections]);
+
+  const handleZoomIn = () => setZoomScale((prev) => Math.min(prev + 0.25, 2.0));
+  const handleZoomOut = () => setZoomScale((prev) => Math.max(prev - 0.25, 1.0));
+  const handleResetView = () => {
+    setZoomScale(1.0);
+    if (filteredDetections.length > 0) setActiveDetection(filteredDetections[0]);
+    setSelectedHotspot(null);
+  };
+
+  return (
+    <div className="relative bg-[#030712] border border-slate-800 rounded-xl overflow-hidden flex flex-col select-none shadow-2xl" style={{ height }}>
+      {/* PROFESSIONAL MISSION CONTROL CONTROL BAR */}
+      {showFilters && (
+        <div className="h-14 bg-[#0B132B]/90 backdrop-blur-md border-b border-slate-800/80 px-5 flex flex-wrap items-center justify-between gap-4 z-20 text-xs font-mono">
+          {/* Mode Switcher Pill */}
+          <div className="flex items-center bg-[#030712] p-1 border border-slate-800 rounded-lg">
+            <button
+              onClick={() => {
+                setVisualizationMode('SONAR_SURVEY');
+                setSelectedHotspot(null);
+              }}
+              className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                visualizationMode === 'SONAR_SURVEY'
+                  ? 'bg-[#38BDF8] text-[#030712] shadow-cyan-glow'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Crosshair className="w-3.5 h-3.5" />
+              <span>SONAR SURVEY MAP</span>
+            </button>
+            <button
+              onClick={() => {
+                setVisualizationMode('ANOMALY_HEATMAP');
+                setActiveDetection(null);
+              }}
+              className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                visualizationMode === 'ANOMALY_HEATMAP'
+                  ? 'bg-[#38BDF8] text-[#030712] shadow-cyan-glow'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Flame className="w-3.5 h-3.5" />
+              <span>ANOMALY HEATMAP</span>
+            </button>
+          </div>
+
+          {/* Filtering Controls */}
+          <div className="flex items-center gap-5">
+            {/* Object Type Dropdown */}
+            <div className="flex items-center gap-2">
+              <span className="text-slate-400 text-[11px]">Object Type:</span>
+              <select
+                value={objectTypeFilter}
+                onChange={(e) => setObjectTypeFilter(e.target.value)}
+                className="bg-[#030712] border border-slate-800 text-slate-200 text-xs rounded-lg px-3.5 py-1.5 focus:border-[#38BDF8] focus:outline-none"
+              >
+                <option value="ALL">All Objects ({MOCK_SURVEY_DETECTIONS.length})</option>
+                <option value="Ghost Fishing Net">Ghost Nets ≡ƒîÉ</option>
+                <option value="Shipwreck / Container">Shipwrecks ΓÜô</option>
+                <option value="Submerged Metal Pipe">Metal Pipes ΓÜí</option>
+                <option value="Marine Debris">Marine Debris ≡ƒôª</option>
+                <option value="Acoustic Anomaly">Anomalies ≡ƒÄ»</option>
+              </select>
+            </div>
+
+            {/* Minimum Confidence Slider */}
+            <div className="flex items-center gap-2.5 bg-[#030712] px-3.5 py-1.5 rounded-lg border border-slate-800">
+              <Sliders className="w-3.5 h-3.5 text-[#38BDF8]" />
+              <span className="text-slate-400 text-[11px]">Min Conf:</span>
+              <input
+                type="range"
+                min="0"
+                max="95"
+                step="5"
+                value={confidenceThreshold}
+                onChange={(e) => setConfidenceThreshold(Number(e.target.value))}
+                className="w-24 accent-[#38BDF8] cursor-pointer"
+              />
+              <span className="text-[#38BDF8] font-bold w-8 text-right">{confidenceThreshold}%</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DEDICATED UNDERWATER SURVEY CANVAS VIEWPORT */}
+      <div className="relative flex-1 w-full h-full overflow-hidden bg-[#020617]">
+        {/* SVG Bathymetric Sonar Survey Viewport */}
+        <svg
+          viewBox="0 0 1000 650"
+          className="w-full h-full transition-transform duration-500 ease-out"
+          style={{ transform: `scale(${zoomScale})` }}
+        >
+          <defs>
+            {/* Survey Area Boundary Clip Path */}
+            <clipPath id="survey-area-clip">
+              <rect
+                x={SURVEY_BOX.x}
+                y={SURVEY_BOX.y}
+                width={SURVEY_BOX.width}
+                height={SURVEY_BOX.height}
+                rx={SURVEY_BOX.rx}
+              />
+            </clipPath>
+
+            {/* Scientific Density Hotspot Radial Gradients */}
+            <radialGradient id="grad-very-high" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="#EF4444" stopOpacity="0.95" />
+              <stop offset="40%" stopColor="#F97316" stopOpacity="0.7" />
+              <stop offset="80%" stopColor="#F59E0B" stopOpacity="0.3" />
+              <stop offset="100%" stopColor="#EF4444" stopOpacity="0" />
+            </radialGradient>
+
+            <radialGradient id="grad-high" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="#F97316" stopOpacity="0.9" />
+              <stop offset="50%" stopColor="#F59E0B" stopOpacity="0.6" />
+              <stop offset="100%" stopColor="#F59E0B" stopOpacity="0" />
+            </radialGradient>
+
+            <radialGradient id="grad-medium" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="#F59E0B" stopOpacity="0.8" />
+              <stop offset="60%" stopColor="#38BDF8" stopOpacity="0.4" />
+              <stop offset="100%" stopColor="#38BDF8" stopOpacity="0" />
+            </radialGradient>
+
+            <radialGradient id="grad-low" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="#38BDF8" stopOpacity="0.75" />
+              <stop offset="70%" stopColor="#38BDF8" stopOpacity="0.25" />
+              <stop offset="100%" stopColor="#38BDF8" stopOpacity="0" />
+            </radialGradient>
+
+            <filter id="spatial-density-blur" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="14" />
+            </filter>
+
+            {/* Seabed Bathymetric Grid Pattern */}
+            <pattern id="spatial-survey-grid" width="41" height="44.16" patternUnits="userSpaceOnUse">
+              <path d="M 41 0 L 0 0 0 44.16" fill="none" stroke="rgba(56, 189, 248, 0.08)" strokeWidth="1" />
+            </pattern>
+          </defs>
+
+          {/* 1. OUTSIDE SURVEY AREA DIMMED OVERLAY */}
+          <rect width="1000" height="650" fill="#020617" opacity="0.95" />
+
+          {/* 2. INNER SURVEYED UNDERWATER AREA CONTAINER (INSIDE CLIP PATH) */}
+          <g clipPath="url(#survey-area-clip)">
+            {/* Seabed Water Column & Spatial Grid Layer */}
+            <rect
+              x={SURVEY_BOX.x}
+              y={SURVEY_BOX.y}
+              width={SURVEY_BOX.width}
+              height={SURVEY_BOX.height}
+              fill="url(#spatial-survey-grid)"
+            />
+            <rect
+              x={SURVEY_BOX.x}
+              y={SURVEY_BOX.y}
+              width={SURVEY_BOX.width}
+              height={SURVEY_BOX.height}
+              fill="rgba(11, 19, 43, 0.75)"
+            />
+
+            {/* Submerged Bathymetric Seabed Depth Contour Curves */}
+            <path
+              d="M 90 180 C 300 150, 600 220, 910 190"
+              fill="none"
+              stroke="rgba(56, 189, 248, 0.15)"
+              strokeWidth="1.5"
+              strokeDasharray="4 4"
+            />
+            <text x="105" y="175" fill="rgba(56, 189, 248, 0.4)" fontSize="10" fontFamily="monospace">DEPTH: 18.0m</text>
+
+            <path
+              d="M 90 320 C 350 280, 650 360, 910 310"
+              fill="none"
+              stroke="rgba(56, 189, 248, 0.15)"
+              strokeWidth="1.5"
+              strokeDasharray="4 4"
+            />
+            <text x="105" y="315" fill="rgba(56, 189, 248, 0.4)" fontSize="10" fontFamily="monospace">DEPTH: 25.0m</text>
+
+            <path
+              d="M 90 470 C 320 440, 680 500, 910 460"
+              fill="none"
+              stroke="rgba(56, 189, 248, 0.15)"
+              strokeWidth="1.5"
+              strokeDasharray="4 4"
+            />
+            <text x="105" y="465" fill="rgba(56, 189, 248, 0.4)" fontSize="10" fontFamily="monospace">DEPTH: 32.0m</text>
+
+            {/* Parallel Sonar Swath Ping Tracklines (Survey Vessel Route) */}
+            {[120, 210, 300, 390, 480].map((yLine, idx) => (
+              <g key={idx}>
+                <line
+                  x1="90"
+                  y1={yLine}
+                  x2="910"
+                  y2={yLine}
+                  stroke="#38BDF8"
+                  strokeOpacity="0.25"
+                  strokeWidth="1.5"
+                  strokeDasharray="6 8"
+                />
+                <text x="915" y={yLine + 3} fill="rgba(56, 189, 248, 0.5)" fontSize="9" fontFamily="monospace">
+                  SWATH #{idx + 1}
+                </text>
+              </g>
+            ))}
+
+            {/* Survey Vessel Active Position on Swath Track 3 */}
+            <g transform="translate(420, 300)">
+              <circle cx="0" cy="0" r="16" fill="rgba(56, 189, 248, 0.15)" className="animate-ping" />
+              <circle cx="0" cy="0" r="6" fill="#38BDF8" />
+              <text x="10" y="4" fill="#38BDF8" fontSize="10" fontFamily="monospace" fontWeight="bold">
+                INS Sagar Kanya
+              </text>
+            </g>
+
+            {/* MODE 2: SCIENTIFIC CELL-BASED ANOMALY DENSITY HEATMAP LAYER (STRICTLY INSIDE SURVEY BOUNDARY) */}
+            {visualizationMode === 'ANOMALY_HEATMAP' && (
+              <g className="transition-opacity duration-500">
+                {/* 1. Blended Density Hotspot Interpolation Patches */}
+                <g filter="url(#spatial-density-blur)">
+                  {spatialGridCells.map((cell, idx) => {
+                    const gradId = 
+                      cell.densityLevel === 4 ? 'grad-very-high' :
+                      cell.densityLevel === 3 ? 'grad-high' :
+                      cell.densityLevel === 2 ? 'grad-medium' : 'grad-low';
+
+                    const radius = 24 + cell.count * 10;
+                    const opacity = Math.min(0.95, 0.35 + cell.count * 0.15);
+
+                    return (
+                      <circle
+                        key={idx}
+                        cx={cell.cx}
+                        cy={cell.cy}
+                        r={radius}
+                        fill={`url(#${gradId})`}
+                        opacity={opacity}
+                      />
+                    );
+                  })}
+                </g>
+
+                {/* 2. Interactive Hotspot Grid Cell Outlines */}
+                {spatialGridCells.map((cell, idx) => {
+                  const isHotspotSelected = selectedHotspot?.col === cell.col && selectedHotspot?.row === cell.row;
+                  const cellWidth = SURVEY_BOX.width / 20;
+                  const cellHeight = SURVEY_BOX.height / 12;
+                  const cellX = SURVEY_BOX.x + cell.col * cellWidth;
+                  const cellY = SURVEY_BOX.y + cell.row * cellHeight;
+
+                  return (
+                    <g
+                      key={`grid-${idx}`}
+                      onClick={() => setSelectedHotspot(cell)}
+                      className="cursor-pointer group"
+                    >
+                      <rect
+                        x={cellX}
+                        y={cellY}
+                        width={cellWidth}
+                        height={cellHeight}
+                        fill={isHotspotSelected ? 'rgba(239, 68, 68, 0.25)' : 'transparent'}
+                        stroke={isHotspotSelected ? '#EF4444' : 'rgba(56, 189, 248, 0.15)'}
+                        strokeWidth={isHotspotSelected ? '2' : '0.5'}
+                        className="transition-colors group-hover:fill-cyan-500/10"
+                      />
+                      {cell.densityLevel >= 3 && (
+                        <text
+                          x={cellX + cellWidth / 2}
+                          y={cellY + cellHeight / 2 + 3}
+                          textAnchor="middle"
+                          fill="#FFFFFF"
+                          fontSize="9"
+                          fontFamily="monospace"
+                          fontWeight="bold"
+                          className="pointer-events-none"
+                        >
+                          {cell.count}
+                        </text>
+                      )}
+                    </g>
+                  );
+                })}
+
+                {/* 3. Subtle Detection Markers Overlay in Heatmap Mode */}
+                {filteredDetections.map((detection) => {
+                  const { px, py } = convertToCanvasCoords(detection.xPercent, detection.yPercent);
+                  const style = getObjectTypeStyle(detection.objectType);
+
+                  return (
+                    <circle
+                      key={`subtle-${detection.id}`}
+                      cx={px}
+                      cy={py}
+                      r="4"
+                      fill="#FFFFFF"
+                      stroke={style.color}
+                      strokeWidth="1.5"
+                      className="pointer-events-none opacity-85"
+                    />
+                  );
+                })}
+              </g>
+            )}
+
+            {/* MODE 1: SONAR SURVEY MAP DETECTIONS (INDIVIDUAL CLEAN OBJECT MARKERS) */}
+            {visualizationMode === 'SONAR_SURVEY' && (
+              <g>
+                {filteredDetections.map((detection) => {
+                  const { px, py } = convertToCanvasCoords(detection.xPercent, detection.yPercent);
+                  const style = getObjectTypeStyle(detection.objectType);
+                  const isSelected = activeDetection?.id === detection.id;
+
+                  return (
+                    <g
+                      key={detection.id}
+                      onClick={() => setActiveDetection(detection)}
+                      className="cursor-pointer group"
+                      transform={`translate(${px}, ${py})`}
+                    >
+                      {/* Selection Glow Indicator */}
+                      {isSelected && (
+                        <circle
+                          cx="0"
+                          cy="0"
+                          r="22"
+                          fill="none"
+                          stroke={style.color}
+                          strokeWidth="2"
+                          className="animate-ping"
+                          opacity="0.8"
+                        />
+                      )}
+
+                      {/* Clean Marker Outer Ring & Symbol */}
+                      <circle
+                        cx="0"
+                        cy="0"
+                        r="14"
+                        fill="#030712"
+                        stroke={isSelected ? '#FFFFFF' : style.color}
+                        strokeWidth={isSelected ? '2.5' : '1.5'}
+                        className="transition-transform group-hover:scale-125"
+                      />
+
+                      <text
+                        x="0"
+                        y="4"
+                        textAnchor="middle"
+                        fontSize="10"
+                        className="select-none pointer-events-none"
+                      >
+                        {style.icon}
+                      </text>
+
+                      {/* Inline Object ID Tag */}
+                      <text
+                        x="18"
+                        y="4"
+                        fill={isSelected ? '#FFFFFF' : '#94A3B8'}
+                        fontSize="10"
+                        fontFamily="monospace"
+                        fontWeight={isSelected ? 'bold' : 'normal'}
+                      >
+                        {detection.id}
+                      </text>
+                    </g>
+                  );
+                })}
+              </g>
+            )}
+          </g>
+
+          {/* 3. SURVEY AREA BOUNDARY BOX OVERLAY STROKE */}
+          <rect
+            x={SURVEY_BOX.x}
+            y={SURVEY_BOX.y}
+            width={SURVEY_BOX.width}
+            height={SURVEY_BOX.height}
+            rx={SURVEY_BOX.rx}
+            fill="none"
+            stroke="#38BDF8"
+            strokeWidth="2"
+            strokeDasharray="8 6"
+            className="pointer-events-none shadow-cyan-glow"
+          />
+
+          {/* Survey Area Boundary Labels */}
+          <text x={SURVEY_BOX.x + 15} y={SURVEY_BOX.y + 25} fill="#38BDF8" fontSize="11" fontFamily="monospace" fontWeight="bold">
+            SURVEY BOUNDARY: 14.8 km┬▓ BENTHIC ZONE
+          </text>
+          <text x={SURVEY_BOX.x + SURVEY_BOX.width - 170} y={SURVEY_BOX.y + 25} fill="rgba(56,189,248,0.7)" fontSize="10" fontFamily="monospace">
+            OUTSIDE: UNSURVEYED
+          </text>
+        </svg>
+
+        {/* TOP-LEFT ACTIVE SURVEY AREA OVERLAY BADGE */}
+        <div className="absolute top-4 left-4 bg-[#030712]/90 border border-slate-800 rounded-lg px-4 py-2.5 z-10 font-mono text-xs backdrop-blur-md shadow-xl space-y-1">
+          <div className="flex items-center gap-2 text-[#38BDF8] font-bold">
+            <Radio className="w-4 h-4 animate-pulse text-[#38BDF8]" />
+            <span>{MOCK_SURVEY_AREA.name}</span>
+          </div>
+          <div className="text-[10px] text-slate-400 font-sans flex items-center gap-3">
+            <span>Vessel: {MOCK_SURVEY_AREA.vesselName}</span>
+            <span>ΓÇó</span>
+            <span>Freq: {MOCK_SURVEY_AREA.sonarFrequency}</span>
+          </div>
+        </div>
+
+        {/* COMPACT TELEMETRY POPUP CARD (SONAR SURVEY MODE) */}
+        {visualizationMode === 'SONAR_SURVEY' && activeDetection && (
+          <div className="absolute bottom-6 right-6 w-80 bg-[#0B132B]/95 border border-slate-700/80 rounded-xl p-4 z-20 backdrop-blur-md shadow-2xl space-y-3 font-mono text-xs animate-fade-up">
+            <div className="flex items-center justify-between border-b border-slate-700 pb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-base">{getObjectTypeStyle(activeDetection.objectType).icon}</span>
+                <span className="font-bold text-white font-serif text-sm">{activeDetection.id}</span>
+              </div>
+              <button
+                onClick={() => setActiveDetection(null)}
+                className="text-slate-400 hover:text-slate-200 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-1.5 text-[11px]">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Object Type:</span>
+                <strong className="text-white font-sans">{activeDetection.objectType}</strong>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Confidence Score:</span>
+                <strong className="text-[#38BDF8] font-bold">{activeDetection.confidence}%</strong>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Survey Depth:</span>
+                <strong className="text-slate-200">{activeDetection.depthMeters} m</strong>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Estimated Size:</span>
+                <strong className="text-slate-200">{activeDetection.estimatedSize.length} m x {activeDetection.estimatedSize.width} m</strong>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Position in Survey:</span>
+                <strong className="text-slate-300">X: {activeDetection.xPercent}%, Y: {activeDetection.yPercent}%</strong>
+              </div>
+            </div>
+
+            <button
+              onClick={() => navigate(`/results?id=${activeDetection.scanId}`)}
+              className="w-full py-2.5 bg-[#38BDF8] hover:bg-[#0EA5E9] text-[#030712] font-mono text-xs font-bold rounded-lg transition-all shadow-cyan-glow flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <span>Inspect Sonar Raster Workspace</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
+        {/* HOTSPOT INSPECTION POPUP CARD (ANOMALY HEATMAP MODE) */}
+        {visualizationMode === 'ANOMALY_HEATMAP' && selectedHotspot && (
+          <div className="absolute bottom-6 right-6 w-80 bg-[#0B132B]/95 border border-red-800/80 rounded-xl p-4 z-20 backdrop-blur-md shadow-2xl space-y-3 font-mono text-xs animate-fade-up">
+            <div className="flex items-center justify-between border-b border-slate-700 pb-2">
+              <div className="flex items-center gap-2 text-red-400 font-bold">
+                <Flame className="w-4 h-4 text-red-500 animate-pulse" />
+                <span>HOTSPOT SECTOR #{selectedHotspot.col + 1}-{selectedHotspot.row + 1}</span>
+              </div>
+              <button
+                onClick={() => setSelectedHotspot(null)}
+                className="text-slate-400 hover:text-slate-200 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-1.5 text-[11px]">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Detection Count:</span>
+                <strong className="text-red-400 font-bold text-sm">{selectedHotspot.count} Anomalies</strong>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Dominant Object:</span>
+                <strong className="text-white font-sans">{selectedHotspot.dominantType}</strong>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Average Confidence:</span>
+                <strong className="text-[#38BDF8] font-bold">{selectedHotspot.avgConfidence}%</strong>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Survey Depth Range:</span>
+                <strong className="text-slate-200">{selectedHotspot.minDepth} m - {selectedHotspot.maxDepth} m</strong>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Recovery Priority:</span>
+                <strong className="text-red-400 font-bold">
+                  {selectedHotspot.count >= 4 ? 'HIGH RECOVERY PRIORITY' : 'MODERATE PRIORITY'}
+                </strong>
+              </div>
+            </div>
+
+            <button
+              onClick={() => {
+                if (selectedHotspot.detections[0]) {
+                  navigate(`/results?id=${selectedHotspot.detections[0].scanId}`);
+                }
+              }}
+              className="w-full py-2.5 bg-red-500 hover:bg-red-600 text-white font-mono text-xs font-bold rounded-lg transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <span>Inspect Cluster Workspace</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
+        {/* FLOATING ZOOM CONTROLS (TOP-RIGHT) */}
+        <div className="absolute top-4 right-4 flex flex-col gap-2 z-10 font-mono text-xs">
+          <button
+            onClick={handleZoomIn}
+            className="p-2.5 bg-[#030712]/90 text-[#38BDF8] border border-slate-800 rounded-lg hover:bg-slate-800 transition-colors shadow-lg cursor-pointer"
+            title="Zoom In"
+          >
+            <ZoomIn className="w-4 h-4" />
+          </button>
+          <button
+            onClick={handleZoomOut}
+            className="p-2.5 bg-[#030712]/90 text-[#38BDF8] border border-slate-800 rounded-lg hover:bg-slate-800 transition-colors shadow-lg cursor-pointer"
+            title="Zoom Out"
+          >
+            <ZoomOut className="w-4 h-4" />
+          </button>
+          <button
+            onClick={handleResetView}
+            className="p-2.5 bg-[#030712]/90 text-slate-400 border border-slate-800 rounded-lg hover:text-slate-200 hover:bg-slate-800 transition-colors shadow-lg cursor-pointer"
+            title="Reset to Survey Area"
+          >
+            <Compass className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* FLOATING DYNAMIC LEGEND (BOTTOM-LEFT) */}
+        <div className="absolute bottom-6 left-6 bg-[#030712]/95 border border-slate-800/90 rounded-xl p-3.5 backdrop-blur-md text-[11px] font-mono z-10 space-y-2 shadow-2xl w-64">
+          <div className="text-slate-400 uppercase text-[10px] font-bold border-b border-slate-800/80 pb-1.5 flex items-center justify-between">
+            <span>{visualizationMode === 'SONAR_SURVEY' ? 'OBJECT TYPE LEGEND' : 'ANOMALY DENSITY KEY'}</span>
+            <span className="text-[#38BDF8]">{filteredDetections.length} ANOMALIES</span>
+          </div>
+
+          {visualizationMode === 'SONAR_SURVEY' ? (
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2 text-slate-300">
+                <span className="text-xs">≡ƒîÉ</span>
+                <span>Ghost Net</span>
+              </div>
+              <div className="flex items-center gap-2 text-slate-300">
+                <span className="text-xs">ΓÜô</span>
+                <span>Shipwreck / Container</span>
+              </div>
+              <div className="flex items-center gap-2 text-slate-300">
+                <span className="text-xs">ΓÜí</span>
+                <span>Submerged Metal Pipe</span>
+              </div>
+              <div className="flex items-center gap-2 text-slate-300">
+                <span className="text-xs">≡ƒôª</span>
+                <span>Marine Debris</span>
+              </div>
+              <div className="flex items-center gap-2 text-slate-300">
+                <span className="text-xs">≡ƒÄ»</span>
+                <span>Acoustic Anomaly</span>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2 animate-fade-up">
+              <div className="flex justify-between text-[9px] text-slate-400 font-mono font-bold">
+                <span>LOW</span>
+                <span>MEDIUM</span>
+                <span>HIGH</span>
+                <span className="text-red-400">VERY HIGH</span>
+              </div>
+              <div className="w-full h-2.5 rounded-full bg-gradient-to-r from-[#38BDF8]/40 via-[#F59E0B]/80 via-[#F97316] to-[#EF4444] border border-slate-800 shadow-inner" />
+              <p className="text-[10px] text-slate-400 font-sans italic pt-0.5 leading-snug">
+                Number of detected anomalies per survey area.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
